@@ -19,7 +19,7 @@ This repository offers a wide range of Turkish resources and practical examples 
 |----------------------------------------|-----------------------------------------------------------------------------|
 | `Daily Dose Codes/`                    | Daily code snippets and programming tips                                    |
 | `Data-Codes/`                          | Data generation, synthetic data creation, and data evaluation scripts       |
-| `DeepLearning_ImageClassifier_CIFAR10/`| TensorFlow/Keras image classifier project on CIFAR-10 dataset               |
+| `Deep Learning/`| TensorFlow/Keras image classifier project on CIFAR-10 dataset               |
 | `Fast API/`                            | Modern web API application examples with FastAPI                            |
 | `Fine Tuning/`                         | Transfer learning and model fine-tuning examples                            |
 | `Genel/`                               | General-purpose Python scripts and utilities                                |
