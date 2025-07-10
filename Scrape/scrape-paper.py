@@ -2,22 +2,22 @@ import requests
 from bs4 import BeautifulSoup
 import os
 import time
-import fitz  # PyMuPDF
+import fitz  # PyMuPDF kütüphanesi
 import subprocess
 import sys
 
 BASE_URL = 'https://huggingface.co'
 PAPERS_URL = f'{BASE_URL}/papers'
 
-# Create 'papers' directory if it does not exist
+# 'papers' dizini yoksa oluştur
 if not os.path.exists('papers'):
     os.makedirs('papers')
 
-# Get the main papers page
+# Ana makaleler sayfasını al
 response = requests.get(PAPERS_URL)
 soup = BeautifulSoup(response.content, 'html.parser')
 
-# Find up to 10 paper links
+# En fazla 10 makale linkini bul
 articles = soup.find_all('article')
 paper_links = []
 for article in articles:
@@ -27,15 +27,15 @@ for article in articles:
     if len(paper_links) == 10:
         break
 
-# Check which PDFs already exist
+# Hangi PDF'lerin zaten mevcut olduğunu kontrol et
 existing_pdfs = set(os.listdir('papers'))
 
-# For each paper, find and download the PDF
+# Her makale için PDF'yi bul ve indir
 for idx, paper_url in enumerate(paper_links, 1):
     paper_resp = requests.get(paper_url)
     paper_soup = BeautifulSoup(paper_resp.content, 'html.parser')
     pdf_link = None
-    # 1. Try to find a direct PDF link on HuggingFace
+    # 1. HuggingFace'de doğrudan PDF linki bulmaya çalış
     for a in paper_soup.find_all('a', href=True):
         if a['href'].endswith('.pdf'):
             pdf_link = a['href']

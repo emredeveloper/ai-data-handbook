@@ -5,35 +5,35 @@ from sklearn.metrics import accuracy_score, classification_report
 from sklearn.preprocessing import StandardScaler
 import numpy as np
 
-# Load Iris dataset
+# Iris veri setini yükle
 iris = load_iris()
 X, y = iris.data, iris.target
 
-# Scale features
+# Özellikleri ölçeklendir
 scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X)
 
-# Split data
+# Veriyi böl
 X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.3, random_state=42)
 
-# Initialize Extra Trees Classifier with tuned parameters
+# Ayarlanmış parametrelerle Extra Trees Sınıflandırıcısını başlat
 clf = ExtraTreesClassifier(n_estimators=200, max_depth=10, min_samples_split=5, random_state=42)
 
-# Perform cross-validation
+# Çapraz doğrulama gerçekleştir
 cv_scores = cross_val_score(clf, X_scaled, y, cv=5)
 print(f"Cross-validation scores: {cv_scores.mean():.2f} (+/- {cv_scores.std() * 2:.2f})")
 
-# Train model
+# Modeli eğit
 clf.fit(X_train, y_train)
 
-# Predict and evaluate
+# Tahmin yap ve değerlendir
 y_pred = clf.predict(X_test)
 accuracy = accuracy_score(y_test, y_pred)
 print(f"Test Accuracy: {accuracy:.2f}")
 print("\nClassification Report:")
 print(classification_report(y_test, y_pred, target_names=iris.target_names))
 
-# Feature importance
+# Özellik önemliliği
 feature_importance = clf.feature_importances_
 for feature, importance in zip(iris.feature_names, feature_importance):
     print(f"{feature}: {importance:.4f}")
