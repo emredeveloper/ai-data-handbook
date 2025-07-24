@@ -1,46 +1,27 @@
 import asyncio
-import os
-from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
+import json
+from langchain_ollama import ChatOllama
 from mcp_use import MCPAgent, MCPClient
 
 async def main():
-    # Load environment variables
-    load_dotenv()
-
-    # Create configuration dictionary
-    config = {
-      "mcpServers": {
-        "playwright": {
-          "command": "npx",
-          "args": ["@playwright/mcp@latest"],
-          "env": {
-            "DISPLAY": ":1"
-          }
-        }
-      }
-    }
-
-    # Create MCPClient from configuration dictionary
+    # browser_mcp.json dosyasından config'i oku
+    with open("browser_mcp.json", "r", encoding="utf-8") as f:
+        config = json.load(f)
     client = MCPClient.from_dict(config)
-
-    # LangChain Gemini LLM
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash",
-        google_api_key=""
+    
+    # Initialize local Ollama model
+    llm = ChatOllama(
+        model="qwen3:4b",
+        base_url="http://localhost:11434",
+        temperature=0.7
     )
-
-    async def llm_func(prompt):
-        return await llm.ainvoke(prompt)
-
-    # Create agent with the client
-    agent = MCPAgent(llm=llm_func, client=client, max_steps=30)
-
-    # Run the query
-    result = await agent.run(
-        "Find the best restaurant in San Francisco USING GOOGLE SEARCH",
-    )
-    print(f"\nResult: {result}")
+    
+    # Create agent
+    agent = MCPAgent(llm=llm, client=client)
+    
+    # Use the agent
+    result = await agent.run("List the files in the current directory")
+    print(result)
 
 if __name__ == "__main__":
     asyncio.run(main())
