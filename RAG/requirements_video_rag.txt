@@ -1,0 +1,7 @@
+google-generativeai
+opencv-python
+numpy
+sentence-transformers
+faiss-cpu
+pathlib
+rich
