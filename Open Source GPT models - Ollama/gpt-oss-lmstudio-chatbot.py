@@ -1,6 +1,6 @@
 import streamlit as st
 import json
-import ollama
+import requests
 import time
 from typing import Dict, Any, List
 import re
@@ -326,57 +326,58 @@ h3 {
 </style>
 
 <!-- MathJax Configuration -->
-<script type="text/javascript" async
-  src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.0/es5/tex-mml-chtml.js">
+<script>
+  window.MathJax = {
+    tex: {
+      inlineMath: [['$', '$'], ['\\(', '\\)']],
+      displayMath: [['$$', '$$'], ['\\[', '\\]']],
+      processEscapes: true,
+      processEnvironments: true
+    },
+    options: {
+      skipHtmlTags: ['script','noscript','style','textarea','pre','code'],
+      ignoreHtmlClass: '.*',
+      processHtmlClass: 'math-content'
+    },
+    svg: {
+      scale: 1.1,
+      fontCache: 'global'
+    },
+    chtml: {
+      scale: 1.1
+    }
+  };
 </script>
-
-<script type="text/x-mathjax-config">
-MathJax.Hub.Config({
-  tex2jax: {
-    inlineMath: [['$', '$'], ['\\(', '\\)']],
-    displayMath: [['$$', '$$'], ['\\[', '\\]']],
-    processEscapes: true,
-    processEnvironments: true
-  },
-  "HTML-CSS": {
-    scale: 110,
-    linebreaks: { automatic: true },
-    fonts: ["STIX-Web"]
-  },
-  CommonHTML: { 
-    scale: 110,
-    linebreaks: { automatic: true }
-  },
-  SVG: {
-    scale: 110,
-    linebreaks: { automatic: true }
-  }
-});
-</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
 
 """, unsafe_allow_html=True)
 
 
-def call_model(messages: List[Dict], model_name: str = "gpt-oss:20b", temperature: float = 1.0) -> Dict[str, Any]:
+def fetch_lmstudio_models(base_url: str) -> List[str]:
+    try:
+        resp = requests.get(f"{base_url.rstrip('/')}/v1/models", timeout=5)
+        resp.raise_for_status()
+        data = resp.json()
+        # OpenAI format: { data: [{id: "model-id", ...}, ...] }
+        return [m.get('id') or m.get('name') for m in data.get('data', []) if m.get('id') or m.get('name')]
+    except Exception:
+        return []
+
+
+def call_model(messages: List[Dict], model_name: str = "gpt-oss:20b", temperature: float = 1.0, base_url: str = "http://localhost:1234") -> Dict[str, Any]:
     try:
         start_time = time.time()        
-        # Prepare options for Ollama
-        options = {
+        payload = {
+            'model': model_name,
+            'messages': messages,
             'temperature': temperature,
-            'top_p': 1.0,
-        }        
-        response = ollama.chat(
-            model=model_name, 
-            messages=messages,
-            options=options
-        )
-        end_time = time.time()        
-        if isinstance(response, dict) and 'message' in response:
-            content = response['message'].get('content', '')
-        elif hasattr(response, 'message'):
-            content = getattr(response.message, 'content', '')
-        else:
-            content = str(response)         
+            'stream': False
+        }
+        resp = requests.post(f"{base_url.rstrip('/')}/v1/chat/completions", json=payload, timeout=60)
+        resp.raise_for_status()
+        data = resp.json()
+        content = data.get('choices', [{}])[0].get('message', {}).get('content', '')
+        end_time = time.time()
         return {
             'content': content, 
             'response_time': end_time - start_time, 
@@ -390,26 +391,43 @@ def call_model(messages: List[Dict], model_name: str = "gpt-oss:20b", temperatur
         }
         
         
+def render_math_html(html: str) -> None:
+    """HTML'i yazdırır ve MathJax typeset tetikler."""
+    st.markdown(html, unsafe_allow_html=True)
+    st.markdown("""
+    <script>
+      try {
+        if (window.MathJax && MathJax.typesetPromise) {
+          const nodes = Array.from(document.querySelectorAll('.math-content'));
+          if (nodes.length) {
+            MathJax.typesetClear && MathJax.typesetClear();
+            MathJax.typesetPromise(nodes);
+          } else {
+            MathJax.typesetPromise();
+          }
+        } else if (window.MathJax && MathJax.typeset) {
+          MathJax.typeset();
+        }
+      } catch (e) { /* no-op */ }
+    </script>
+    """, unsafe_allow_html=True)
+
+
 def format_mathematical_content(content: str) -> str:
+    """Metni bozmadan LaTeX matematik ifadelerini vurgulu biçimde sarmalar.
+
+    - Display math: $$...$$ ve \\[...\\] bloklarını .math-block ile sarar
+    - Inline math: $...$ ve \\(...\\) ifadelerini .math-inline ile sarar
     """
-    Format mathematical content for better display
-    """
-    # Replace common mathematical symbols and expressions
-    content = re.sub(r'\b(\d+/\d+)\b', r'<span class="math-inline">$\1$</span>', content)
-    content = re.sub(r'\b(sqrt\(([^)]+)\))', r'<span class="math-inline">$\\sqrt{\2}$</span>', content)
-    content = re.sub(r'\b(x\^(\d+))\b', r'<span class="math-inline">$x^{\2}$</span>', content)
-    content = re.sub(r'\b((\d+)\^(\d+))\b', r'<span class="math-inline">$\2^{\3}$</span>', content)
-    
-    # Format equations on separate lines
-    content = re.sub(r'(\w+)\s*=\s*([^.\n]+)', r'<div class="math-block">$\1 = \2$</div>', content)
-    
-    # Add proper spacing around mathematical operators
-    content = re.sub(r'(\d+)\s*\+\s*(\d+)', r'\1 + \2', content)
-    content = re.sub(r'(\d+)\s*-\s*(\d+)', r'\1 - \2', content)
-    content = re.sub(r'(\d+)\s*\*\s*(\d+)', r'\1 × \2', content)
-    content = re.sub(r'(\d+)\s*/\s*(\d+)', r'\1 ÷ \2', content)
-    
-    # Wrap the entire content in math-content class
+    # Display math ( $$ ... $$ ) — kaçış ve backslash bozulumunu düzelt
+    # Önce \[ ve \] içinde $$ geldiğinde ikilemeyelim
+    content = re.sub(r"(?s)\$\$(.+?)\$\$", lambda m: f'<div class="math-block">{m.group(0).replace("\\\\", "\\")}</div>', content)
+    # Display math ( \[ ... \] )
+    content = re.sub(r"(?s)\\\[(.+?)\\\]", lambda m: f'<div class="math-block">{m.group(0).replace("\\\\", "\\")}</div>', content)
+    # Inline math ( \( ... \) )
+    content = re.sub(r"\\\((.+?)\\\)", lambda m: f'<span class="math-inline">{m.group(0).replace("\\\\", "\\")}</span>', content)
+    # Inline math ( $ ... $ ) — tek dolar işaretlerini hedefler, $$ blokları zaten sarıldı
+    content = re.sub(r"(?s)(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)", lambda m: f'<span class="math-inline">{m.group(0).replace("\\\\", "\\")}</span>', content)
     return f'<div class="math-content">{content}</div>'
 
 
@@ -446,11 +464,20 @@ if 'history' not in st.session_state:
 with st.sidebar:
     st.markdown("### ⚙️ Configuration")
     
+    st.markdown("#### 🔌 LM Studio API URL")
+    api_url = st.text_input(
+        "LM Studio API URL",
+        value="http://localhost:1234",
+        help="LM Studio Settings > Local Server içinde görünen base URL",
+        label_visibility="hidden"
+    )
+
     st.markdown("#### 🤖 Model Selection")
+    available_models = fetch_lmstudio_models(api_url) or ["gpt-4o-mini", "qwen2.5-instruct", "mistral-nemo-instruct"]
     model_choice = st.selectbox(
         "Model Selection", 
-        ["gpt-oss:20b", "gpt-oss:120b"],
-        help="Choose between 20B (faster) or 120B (more capable)",
+        available_models,
+        help="LM Studio'da yüklü ve servis edilen modeller",
         label_visibility="hidden"
     )    
     
@@ -502,7 +529,7 @@ examples = [
     "📊 120 km mesafeyi 1.5 saatte, sonra 80 km'yi 45 dakikada giden bir trenin ortalama hızı nedir?",
     "🧮 √2'nin irrasyonel olduğunu ispatlayın.",
     "🔢 x² + 5x + 6 = 0 denklemini çözün.",
-    "� Bir dik üçgenin hipotenüsü 13 cm, bir dik kenarı 5 cm ise diğer dik kenar kaç cm'dir?",
+    "📐 Bir dik üçgenin hipotenüsü 13 cm, bir dik kenarı 5 cm ise diğer dik kenar kaç cm'dir?",
     "💻 En uzun palindromik alt dizeyi bulan bir fonksiyon yazın.",
     "🔬 Kuantum dolanıklığı basit terimlerle açıklayın.",
     "🎯 Bir öneri sistemi nasıl tasarlarsınız?",
@@ -542,7 +569,7 @@ if submit_button and question.strip():
     msgs.extend(st.session_state.history[-6:])
     msgs.append({'role': 'user', 'content': question})    
     with st.spinner(f"🤖 GPT-OSS is thinking with {effort} effort... 🧠"):
-        res = call_model(msgs, model_choice, temperature)
+        res = call_model(msgs, model_choice, temperature, base_url=api_url)
     if res['success']:
         parsed = parse_reasoning_response(res['content'])        
         st.session_state.history.append({'role': 'user', 'content': question})
@@ -552,22 +579,22 @@ if submit_button and question.strip():
             if show_reasoning and parsed['reasoning'] != 'No explicit reasoning detected.':
                 st.markdown("### 🧠 Chain-of-Thought Reasoning")
                 formatted_reasoning = format_mathematical_content(parsed['reasoning'])
-                st.markdown(f"""
+                render_math_html(f"""
                 <div class='reasoning-box'>
                     <strong style='color: #22c55e; font-size: 1.1rem;'>💭 AI Thinking Process:</strong>
                     <br><br>
                     {formatted_reasoning}
                 </div>
-                """, unsafe_allow_html=True)            
+                """)            
             st.markdown("### ✨ Final Answer")
             formatted_answer = format_mathematical_content(parsed['answer'])
-            st.markdown(f"""
-            <div class='answer-box'>
+            render_math_html(f"""
+            <div class='answer-box math-content'>
                 <strong style='color: #6366f1; font-size: 1.1rem;'>🎯 AI Response:</strong>
                 <br><br>
                 {formatted_answer}
             </div>
-            """, unsafe_allow_html=True)       
+            """)       
         if show_metrics:
             with col2:
                 st.markdown(f"""
@@ -575,6 +602,7 @@ if submit_button and question.strip():
                     <h4>📊 Performance Metrics</h4>
                     <p><strong>⏱️ Time:</strong><br><span style="color: #6366f1; font-size: 1.1rem; font-weight: 600;">{res['response_time']:.2f}s</span></p>
                     <p><strong>🤖 Model:</strong><br><span style="color: #22c55e; font-weight: 600;">{model_choice}</span></p>
+                    <p><strong>🌐 API:</strong><br><span style="color: #64748b; font-weight: 600;">{api_url}</span></p>
                     <p><strong>🎯 Effort:</strong><br><span style="color: #f59e0b; font-weight: 600;">{effort.title()}</span></p>
                 </div>
                 """, unsafe_allow_html=True)
@@ -598,9 +626,9 @@ if st.session_state.history:
             with st.expander(f"🤖 GPT-OSS Response #{(i//2) + 1}", expanded=False):
                 if parsed_hist['reasoning'] != 'No explicit reasoning detected.':
                     st.markdown("**🧠 Reasoning Process:**")
-                    st.markdown(format_mathematical_content(parsed_hist['reasoning']), unsafe_allow_html=True)
+                    render_math_html(f"<div class='math-content'>{format_mathematical_content(parsed_hist['reasoning'])}</div>")
                 st.markdown("**✨ Final Answer:**")
-                st.markdown(format_mathematical_content(parsed_hist['answer']), unsafe_allow_html=True)
+                render_math_html(f"<div class='math-content'>{format_mathematical_content(parsed_hist['answer'])}</div>")
 # Footer
 st.markdown("---")
 st.markdown("""
