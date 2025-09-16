@@ -11,7 +11,7 @@ ROOT_RESOURCE = os.path.join(os.path.dirname(__file__), 'resource')
 
 def init_agent_service():
     llm_cfg = {
-        'model': 'qwen3:4b',  # Change to your Ollama model name if different
+        'model': 'qwen3-4b-2507',  # Change to your Ollama model name if different
         'model_server': 'http://localhost:11434/v1',  # Ollama's default API endpoint
         'api_key': 'EMPTY',  # Ollama does not require an API key
     }
