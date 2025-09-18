@@ -55,3 +55,11 @@ ENV/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# HF/Transformers fine-tune çıktıları
+whisper-small-turkish/
+Fine Tuning/whisper-small-turkish/
+**/checkpoint-*/
+**/runs/
+**/wandb/
+**/events.out.tfevents*
