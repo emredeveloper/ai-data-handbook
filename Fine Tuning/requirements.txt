@@ -9,3 +9,5 @@ accelerate
 librosa
 soundfile
 tensorboard
+rich
+sacrebleu

@@ -64,10 +64,12 @@ def main():
         print(f"Train örnekleri: {len(dataset['train'])}")
         print(f"Test örnekleri: {len(dataset['test'])}")
         
-        # 500 veri ile eğitim yap
-        print("Dataset küçültülüyor (500 train, 50 test)...")
-        dataset["train"] = dataset["train"].select(range(500))
-        dataset["test"] = dataset["test"].select(range(50))
+        # 1000 eğitim, 100 test örneği ile eğitim yap
+        desired_train = 1000
+        desired_test = 100
+        print(f"Dataset küçültülüyor ({desired_train} train, {desired_test} test)...")
+        dataset["train"] = dataset["train"].select(range(min(desired_train, len(dataset["train"])) ))
+        dataset["test"] = dataset["test"].select(range(min(desired_test, len(dataset["test"])) ))
         print(f"Yeni train örnekleri: {len(dataset['train'])}")
         print(f"Yeni test örnekleri: {len(dataset['test'])}")
         
@@ -266,29 +268,29 @@ def main():
     print("Training konfigürasyonu ayarlanıyor...")
     training_args = Seq2SeqTrainingArguments(
         output_dir="./whisper-small-turkish",
-        per_device_train_batch_size=2,  # Daha da azaltıldı
-        gradient_accumulation_steps=2,  # Gradient accumulation artırıldı
+        per_device_train_batch_size=2,
+        gradient_accumulation_steps=4,  # efektif batch boyutu artar, stabilite iyileşir
         learning_rate=1e-5,
-        lr_scheduler_type="constant_with_warmup",
-        warmup_steps=10,  # Warmup artırıldı
-        max_steps=30,  # Orta seviye step - dengeli fine-tuning
-        gradient_checkpointing=False,  # Gradient checkpointing kapatıldı
-        fp16=False,  # FP16 kapatıldı
+        lr_scheduler_type="linear",  # daha dengeli öğrenme için linear scheduler
+        warmup_steps=50,  # daha uzun ısınma
+        max_steps=250,  # ~1 epoch (1000/ (2*4) ≈ 125 step/epoch) üstü eğitim
+        gradient_checkpointing=False,
+        fp16=False,
         fp16_full_eval=False,
         eval_strategy="steps",
         per_device_eval_batch_size=2,
         predict_with_generate=True,
         generation_max_length=225,
-        save_steps=15,
-        eval_steps=15,
-        logging_steps=5,
+        save_steps=50,
+        eval_steps=50,
+        logging_steps=10,
         report_to=["tensorboard"],
         load_best_model_at_end=True,
         metric_for_best_model="wer",
         greater_is_better=False,
-        push_to_hub=False,  # Hub'a yükleme kapalı
+        push_to_hub=False,
         hub_strategy="checkpoint",
-        dataloader_num_workers=0,  # Multiprocessing kapatıldı
+        dataloader_num_workers=0,
     )
 
     # Trainer'ı oluştur
