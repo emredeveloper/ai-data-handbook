@@ -1,0 +1,420 @@
+╭─────────────────────────────────────────────╮
+│ 🎯 Manual Audio Test - With Real Audio Data │
+╰─────────────────────────────────────────────╯
+============================================================
+🎵 Loading real audio data from Hugging Face...
+📥 Loading Khan Academy Turkish dataset...
+Dataset columns: ['transcription', 'audio']
+Train size: 25741 | Test size: 1355
+📡 Setting audio sampling rate (test split)...
+📥 Loading sample 1 (test idx=100)...
+Audio data type: <class 'datasets.features._torchcodec.AudioDecoder'>
+Audio data keys: Not dict
+✅ Sample 1: 'Ama baz yılımız olarak 1967'yi alırsak, 6,77 kat p...' (172418 samples)
+📥 Loading sample 2 (test idx=101)...
+Audio data type: <class 'datasets.features._torchcodec.AudioDecoder'>
+Audio data keys: Not dict
+✅ Sample 2: 'Ya da 1 gramın 6,02 çarpı 10 üzeri 23 atomik kütle...' (119678 samples)
+📥 Loading sample 3 (test idx=102)...
+Audio data type: <class 'datasets.features._torchcodec.AudioDecoder'>
+Audio data keys: Not dict
+✅ Sample 3: 'Yerine sabitlemek için de, yine kargaburnu kullanı...' (57335 samples)
+📥 Loading sample 4 (test idx=103)...
+Audio data type: <class 'datasets.features._torchcodec.AudioDecoder'>
+Audio data keys: Not dict
+✅ Sample 4: 'Arkadaşlar merhaba, daha önceki videolarımızda tal...' (174421 samples)
+📥 Loading sample 5 (test idx=104)...
+Audio data type: <class 'datasets.features._torchcodec.AudioDecoder'>
+Audio data keys: Not dict
+✅ Sample 5: 'Böylece eğer Fatma mesaja ulaşsa bile, mesaj ona a...' (121475 samples)
+📥 Loading sample 6 (test idx=105)...
+Audio data type: <class 'datasets.features._torchcodec.AudioDecoder'>
+Audio data keys: Not dict
+✅ Sample 6: 'D senaryosundayız, biraz duralım, bunu sa siz ince...' (410563 samples)
+📥 Loading sample 7 (test idx=106)...
+Audio data type: <class 'datasets.features._torchcodec.AudioDecoder'>
+Audio data keys: Not dict
+✅ Sample 7: 'Kapıya memantin gibi farklı bir kilit takarsak, o ...' (142049 samples)
+📥 Loading sample 8 (test idx=107)...
+Audio data type: <class 'datasets.features._torchcodec.AudioDecoder'>
+Audio data keys: Not dict
+✅ Sample 8: 'Her eylemin fayda ve zararını tartar böylece sonuç...' (164675 samples)
+📥 Loading sample 9 (test idx=108)...
+Audio data type: <class 'datasets.features._torchcodec.AudioDecoder'>
+Audio data keys: Not dict
+✅ Sample 9: 'Bu video da size sinir hücrelerini ve çeşitlerini ...' (127554 samples)
+📥 Loading sample 10 (test idx=109)...
+Audio data type: <class 'datasets.features._torchcodec.AudioDecoder'>
+Audio data keys: Not dict
+✅ Sample 10: 'Resimde dünyayı kontrol eden bir duruşla betimlenm...' (52319 samples)
+📥 Loading sample 11 (test idx=110)...
+Audio data type: <class 'datasets.features._torchcodec.AudioDecoder'>
+Audio data keys: Not dict
+✅ Sample 11: 'Şunu başka bir renkle yazayım A kişisi yılda 100 b...' (236692 samples)
+📥 Loading sample 12 (test idx=111)...
+Audio data type: <class 'datasets.features._torchcodec.AudioDecoder'>
+Audio data keys: Not dict
+✅ Sample 12: 'Yani bu parayı alıp, mor paraya çeviriyorlar. Eğer...' (86876 samples)
+📥 Loading sample 13 (test idx=112)...
+Audio data type: <class 'datasets.features._torchcodec.AudioDecoder'>
+Audio data keys: Not dict
+✅ Sample 13: 'Eğer 2 tane A aleline sahipseniz, kesinlikle A kan...' (96992 samples)
+📥 Loading sample 14 (test idx=113)...
+Audio data type: <class 'datasets.features._torchcodec.AudioDecoder'>
+Audio data keys: Not dict
+✅ Sample 14: 'Bu işlemin sonucu da 30.625'miş. evet, yani önceki...' (121656 samples)
+📥 Loading sample 15 (test idx=114)...
+Audio data type: <class 'datasets.features._torchcodec.AudioDecoder'>
+Audio data keys: Not dict
+✅ Sample 15: 'Bu yaşananlar, bazı yönleriyle, İngiltere'de olanl...' (247746 samples)
+✅ Loaded 15 real audio samples (not used in training)!
+
+📊 Testing with 15 samples...
+
+🎯 Testing Sample 1:
+📝 Expected text: 'Ama baz yılımız olarak 1967'yi alırsak, 6,77 kat pahalandığını görürüz. Unutmayın, baz yılı 100 kabu...'
+--------------------------------------------------
+🔵 Testing with Original Whisper Small...
+🔵 Original result: ' Ancak baz yılımız olarak 1967'yi alırsak 6.77 kat pahalandığını görürüz. Unutmayın arkadaşlar, baz yılını 100 kabul ediyoruz.'
+🟢 Testing with Fine-tuned Whisper Small...
+📁 Using latest checkpoint: ./whisper-small-turkish\checkpoint-10
+🟢 Fine-tuned result: ' Ancak baz yılımız olarak 1967'yi alırsak 6.77 kat pahalandığını görürüz. Unutmayın arkadaşlar, baz yılını yüz kabul ediyoruz.'
+
+🎯 Testing Sample 2:
+📝 Expected text: 'Ya da 1 gramın 6,02 çarpı 10 üzeri 23 atomik kütle birimine eşit olduğunu söyleyebilirsiniz....'
+--------------------------------------------------
+🔵 Testing with Original Whisper Small...
+🔵 Original result: ' ya da 1 gramın 6.02 çarpı, 10 üzeri 23 atomik kütle birimine eşit olduğunu söyleyebilirsiniz.'
+🟢 Testing with Fine-tuned Whisper Small...
+📁 Using latest checkpoint: ./whisper-small-turkish\checkpoint-10
+🟢 Fine-tuned result: ' ya da 1 gramın 6.02 çarpı 10 üzeri 23 atomik kütle birimine eşit olduğunu söyleyebilirsiniz.'
+
+🎯 Testing Sample 3:
+📝 Expected text: 'Yerine sabitlemek için de, yine kargaburnu kullanıyoruz....'
+--------------------------------------------------
+🔵 Testing with Original Whisper Small...
+🔵 Original result: ' yerine sabitlemek için de yine kargaburnu kullanıyoruz.'
+🟢 Testing with Fine-tuned Whisper Small...
+📁 Using latest checkpoint: ./whisper-small-turkish\checkpoint-10
+🟢 Fine-tuned result: ' yerine sabitlemek için de yine kargaburnu kullanıyoruz.'
+
+🎯 Testing Sample 4:
+📝 Expected text: 'Arkadaşlar merhaba, daha önceki videolarımızda talep elastikiyetinden bahsetmiştik. Aklınıza şöyle b...'
+--------------------------------------------------
+🔵 Testing with Original Whisper Small...
+🔵 Original result: ' Arkadaşlar merhaba. Daha önceki videolarımızda talep elastikiyetinden bahsetmiştik. Aklınızda şöyle bir soru gelebilir. Arz elastikiyeti 
+de var mı? Tabii ki var.'
+🟢 Testing with Fine-tuned Whisper Small...
+📁 Using latest checkpoint: ./whisper-small-turkish\checkpoint-10
+🟢 Fine-tuned result: ' Arkadaşlar merhaba. Daha önceki videolarımızda talep elastikiyetinden bahsetmiştik. Aklınızda şöyle bir soru gelebilir. Arz 
+elastikiyeti de var mı? Tabii ki var.'
+
+🎯 Testing Sample 5:
+📝 Expected text: 'Böylece eğer Fatma mesaja ulaşsa bile, mesaj ona anlamsız geleceğinden, mesaj güvende olur....'
+--------------------------------------------------
+🔵 Testing with Original Whisper Small...
+🔵 Original result: ' Böylece, eğer Fatma mesaja ulaşsa bile, mesaj ona alnamsız geleceğinden mesaj güvende olur.'
+🟢 Testing with Fine-tuned Whisper Small...
+📁 Using latest checkpoint: ./whisper-small-turkish\checkpoint-10
+🟢 Fine-tuned result: ' Böylece, eğer Fatma mesaja ulaşsa bile, mesaj ona anlamsız geleceğinden mesaj güvende olur.'
+
+🎯 Testing Sample 6:
+📝 Expected text: 'D senaryosundayız, biraz duralım, bunu sa siz inceleyin. Senaryo D'de, fazladan 1 tane tavşan yakala...'
+--------------------------------------------------
+🔵 Testing with Original Whisper Small...
+🔵 Original result: ' Senaryosundayız. Biraz duralım. Bunda siz inceleyin. Senaryo D'de fazladan bir tane tavşan yakalamının marginal maliyete 60 Börtlen. 
+Senaryo C'ye bakalım. Marginal maliyet 80 Börtlen. En son bakacağımızda senaryo B. Senaryo B'ye göre fazladan yakalayacağınız bir tane tavşanın marginal 
+maliyeti 100 adet Börtlen.'
+🟢 Testing with Fine-tuned Whisper Small...
+📁 Using latest checkpoint: ./whisper-small-turkish\checkpoint-10
+🟢 Fine-tuned result: ' D senaryosundayız. Biraz duralım. Bunda siz inceleyin. Senaryo D'de fazladan bir tane tavşan yakalamının marjinal maliyete 60 
+böğürtülen. Senaryo C'ye bakalım. Marjinal maliyet 80 böğürtülen. En son bakacağımızda senaryo B. Senaryo B'ye göre fazladan yakalayacağınız bir tane tavşanın 
+marjinal maliyeti 100 adet böğürtülen.'
+
+🎯 Testing Sample 7:
+📝 Expected text: 'Kapıya memantin gibi farklı bir kilit takarsak, o zaman anahtar kapıyı açamaz ve parti de makul sını...'
+--------------------------------------------------
+🔵 Testing with Original Whisper Small...
+🔵 Original result: ' kapıya memantin gibi farklı bir kilit takarsak o zaman anahtar kapıya açamaz ve partide makul sınırlar içinde kalır.'
+🟢 Testing with Fine-tuned Whisper Small...
+📁 Using latest checkpoint: ./whisper-small-turkish\checkpoint-10
+🟢 Fine-tuned result: ' kapıya memantin gibi farklı bir kilit takarsak o zaman anahtar kapıya açamaz ve partide makul sınırlar içinde kalır.'
+
+🎯 Testing Sample 8:
+📝 Expected text: 'Her eylemin fayda ve zararını tartar böylece sonuçta en fazla faydayı elde etmeyi umar. Rasyonel bir...'
+--------------------------------------------------
+🔵 Testing with Original Whisper Small...
+🔵 Original result: ' Her eylemin fayda ve zararını tartar, böylece sonuçta en fazla faydayı elde etmeyi umar. Rasyonel bir seçim birbiriyle tutarlı seçimler 
+düzeninin bir parçasıdır.'
+🟢 Testing with Fine-tuned Whisper Small...
+📁 Using latest checkpoint: ./whisper-small-turkish\checkpoint-10
+🟢 Fine-tuned result: ' Her eylemin fayda ve zararını tartar, böylece sonuçta en fazla faydayı elde etmeyi umar. Rasyonel bir seçim birbiriyle tutarlı seçimler
+düzeninin bir parçasıdır.'
+
+🎯 Testing Sample 9:
+📝 Expected text: 'Bu video da size sinir hücrelerini ve çeşitlerini anlatacağım. Adı üstünde, sinir hücresi, sinir sis...'
+--------------------------------------------------
+🔵 Testing with Original Whisper Small...
+🔵 Original result: ' Bu videoda size sinir hücrelerini ve çeşitlerini anlatacağım. Adı üstünde sinir hücresi sinir sisteminde bulunur.'
+🟢 Testing with Fine-tuned Whisper Small...
+📁 Using latest checkpoint: ./whisper-small-turkish\checkpoint-10
+🟢 Fine-tuned result: ' Bu videoda size sinir hücrelerini ve çeşitlerini anlatacağım. Adı üstünde sinir hücresi sinir sisteminde bulunur.'
+
+🎯 Testing Sample 10:
+📝 Expected text: 'Resimde dünyayı kontrol eden bir duruşla betimlenmiş....'
+--------------------------------------------------
+🔵 Testing with Original Whisper Small...
+🔵 Original result: ' Bu resimde dünyayı kontrol eden bir duruşla betimlenmiş.'
+🟢 Testing with Fine-tuned Whisper Small...
+📁 Using latest checkpoint: ./whisper-small-turkish\checkpoint-10
+🟢 Fine-tuned result: ' Bu resimde dünyayı kontrol eden bir duruşla betimlenmiş.'
+
+🎯 Testing Sample 11:
+📝 Expected text: 'Şunu başka bir renkle yazayım A kişisi yılda 100 bin lira kazanıyor olsun. B kişisiyse 1 milyon lira...'
+--------------------------------------------------
+🔵 Testing with Original Whisper Small...
+🔵 Original result: ' Bu şunu başka bir renkle yazayım. A kişisi yılda yüz bin lira kazanıyor. B kişisi ise bir milyon lira kazanıyor değil. Evet, B kişisi 
+yılda bir milyon lira kazanıyor. Bu şunu bir emdiye yazayım.'
+🟢 Testing with Fine-tuned Whisper Small...
+📁 Using latest checkpoint: ./whisper-small-turkish\checkpoint-10
+🟢 Fine-tuned result: ' A kişisi yılda 100 bin lira kazanıyor. B kişisi ise 1 milyon lira kazanıyor değil. Evet, B kişisi yılda 1 milyon lira kazanıyor. Bu 
+şunu bir emdiye yazayım.'
+
+🎯 Testing Sample 12:
+📝 Expected text: 'Yani bu parayı alıp, mor paraya çeviriyorlar. Eğer bu olursa, sonuca ters etki yapar....'
+--------------------------------------------------
+🔵 Testing with Original Whisper Small...
+🔵 Original result: ' Yani bu parayı alıp, mor paraya çeviriyorlar. Eğer bu olursa sonuca ters etki yapar.'
+🟢 Testing with Fine-tuned Whisper Small...
+📁 Using latest checkpoint: ./whisper-small-turkish\checkpoint-10
+🟢 Fine-tuned result: ' Yani bu parayı alıp mor paraya çeviriyorlar. Eğer bu olursa sonuca ters etki yapar.'
+
+🎯 Testing Sample 13:
+📝 Expected text: 'Eğer 2 tane A aleline sahipseniz, kesinlikle A kan grubuna sahip olursunuz....'
+--------------------------------------------------
+🔵 Testing with Original Whisper Small...
+🔵 Original result: ' Eğer iki tane A aleline sahipseniz, kesinlikle A kan grubuna sahip olursunuz.'
+🟢 Testing with Fine-tuned Whisper Small...
+📁 Using latest checkpoint: ./whisper-small-turkish\checkpoint-10
+🟢 Fine-tuned result: ' Eğer iki tane A aleline sahipseniz, kesinlikle A kan grubuna sahip olursunuz.'
+
+🎯 Testing Sample 14:
+📝 Expected text: 'Bu işlemin sonucu da 30.625'miş. evet, yani önceki videoda bulduğumuz değerin aynısı....'
+--------------------------------------------------
+🔵 Testing with Original Whisper Small...
+🔵 Original result: ' Bu işlemin sonucuda 30.625. Yani önceki videoda bulduğumuz değerin aynısı.'
+🟢 Testing with Fine-tuned Whisper Small...
+📁 Using latest checkpoint: ./whisper-small-turkish\checkpoint-10
+🟢 Fine-tuned result: ' Bu işlemin sonucu da 30 nokta 625miş. Yani önceki videoda bulduğumuz değerin aynısı.'
+
+🎯 Testing Sample 15:
+📝 Expected text: 'Bu yaşananlar, bazı yönleriyle, İngiltere'de olanlara benziyordu, ancak bazı açılardan bu daha büyük...'
+--------------------------------------------------
+🔵 Testing with Original Whisper Small...
+🔵 Original result: ' Bu yaşananlar bazı yönleriyle İngiltere'de olanlara benziyordu. Ancak bazı açılardan bu daha büyük bir gelişmeydi. Hükümet kurmak için 
+yemin edilmişti. Ama işler Fransa'da özellikle de Paris'te karışmaya başlamıştı.'
+🟢 Testing with Fine-tuned Whisper Small...
+📁 Using latest checkpoint: ./whisper-small-turkish\checkpoint-10
+🟢 Fine-tuned result: ' Bu yaşananlar bazı yönleriyle İngiltere'de olanlara benziyordu. Ancak bazı açılardan bu daha büyük bir gelişmeydi. Hükümet kurmak için 
+yemin edilmişti. Ama işler Fransa'da özellikle de, özellikle de Paris'te karışmaya başlamıştı.'
+
+============================================================
+📊 OVERALL RESULTS:
+============================================================
+
+🎯 Sample 1:
+📝 Expected: 'Ama baz yılımız olarak 1967'yi alırsak, 6,77 kat pahalandığını görürüz. Unutmayı...'
+🔵 Original: ' Ancak baz yılımız olarak 1967'yi alırsak 6.77 kat pahalandığını görürüz. Unutma...'
+🟢 Fine-tuned: ' Ancak baz yılımız olarak 1967'yi alırsak 6.77 kat pahalandığını görürüz. Unutma...'
+📈 Original similarity: 47.62%
+📈 Fine-tuned similarity: 40.91%
+   WER(O/F): 100.00% / 100.00% | CER(O/F): 100.00% / 100.00%
+   BLEU(O/F): 0.000 / 0.000 | chrF(O/F): 0.00 / 0.00
+   RTF(O/F): nan / nan
+🔵 Original model performs better on this sample!
+
+🎯 Sample 2:
+📝 Expected: 'Ya da 1 gramın 6,02 çarpı 10 üzeri 23 atomik kütle birimine eşit olduğunu söyley...'
+🔵 Original: ' ya da 1 gramın 6.02 çarpı, 10 üzeri 23 atomik kütle birimine eşit olduğunu söyl...'
+🟢 Fine-tuned: ' ya da 1 gramın 6.02 çarpı 10 üzeri 23 atomik kütle birimine eşit olduğunu söyle...'
+📈 Original similarity: 76.47%
+📈 Fine-tuned similarity: 87.50%
+   WER(O/F): 100.00% / 100.00% | CER(O/F): 100.00% / 100.00%
+   BLEU(O/F): 0.000 / 0.000 | chrF(O/F): 0.00 / 0.00
+   RTF(O/F): nan / nan
+✅ Fine-tuned model performs better on this sample!
+
+🎯 Sample 3:
+📝 Expected: 'Yerine sabitlemek için de, yine kargaburnu kullanıyoruz....'
+🔵 Original: ' yerine sabitlemek için de yine kargaburnu kullanıyoruz....'
+🟢 Fine-tuned: ' yerine sabitlemek için de yine kargaburnu kullanıyoruz....'
+📈 Original similarity: 75.00%
+📈 Fine-tuned similarity: 75.00%
+   WER(O/F): 100.00% / 100.00% | CER(O/F): 100.00% / 100.00%
+   BLEU(O/F): 0.000 / 0.000 | chrF(O/F): 0.00 / 0.00
+   RTF(O/F): nan / nan
+🤔 Both models perform equally well!
+
+🎯 Sample 4:
+📝 Expected: 'Arkadaşlar merhaba, daha önceki videolarımızda talep elastikiyetinden bahsetmişt...'
+🔵 Original: ' Arkadaşlar merhaba. Daha önceki videolarımızda talep elastikiyetinden bahsetmiş...'
+🟢 Fine-tuned: ' Arkadaşlar merhaba. Daha önceki videolarımızda talep elastikiyetinden bahsetmiş...'
+📈 Original similarity: 75.00%
+📈 Fine-tuned similarity: 75.00%
+   WER(O/F): 100.00% / 100.00% | CER(O/F): 100.00% / 100.00%
+   BLEU(O/F): 0.000 / 0.000 | chrF(O/F): 0.00 / 0.00
+   RTF(O/F): nan / nan
+🤔 Both models perform equally well!
+
+🎯 Sample 5:
+📝 Expected: 'Böylece eğer Fatma mesaja ulaşsa bile, mesaj ona anlamsız geleceğinden, mesaj gü...'
+🔵 Original: ' Böylece, eğer Fatma mesaja ulaşsa bile, mesaj ona alnamsız geleceğinden mesaj g...'
+🟢 Fine-tuned: ' Böylece, eğer Fatma mesaja ulaşsa bile, mesaj ona anlamsız geleceğinden mesaj g...'
+📈 Original similarity: 60.00%
+📈 Fine-tuned similarity: 71.43%
+   WER(O/F): 100.00% / 100.00% | CER(O/F): 100.00% / 100.00%
+   BLEU(O/F): 0.000 / 0.000 | chrF(O/F): 0.00 / 0.00
+   RTF(O/F): nan / nan
+✅ Fine-tuned model performs better on this sample!
+
+🎯 Sample 6:
+📝 Expected: 'D senaryosundayız, biraz duralım, bunu sa siz inceleyin. Senaryo D'de, fazladan ...'
+🔵 Original: ' Senaryosundayız. Biraz duralım. Bunda siz inceleyin. Senaryo D'de fazladan bir ...'
+🟢 Fine-tuned: ' D senaryosundayız. Biraz duralım. Bunda siz inceleyin. Senaryo D'de fazladan bi...'
+📈 Original similarity: 52.27%
+📈 Fine-tuned similarity: 58.14%
+   WER(O/F): 100.00% / 100.00% | CER(O/F): 100.00% / 100.00%
+   BLEU(O/F): 0.000 / 0.000 | chrF(O/F): 0.00 / 0.00
+   RTF(O/F): nan / nan
+✅ Fine-tuned model performs better on this sample!
+
+🎯 Sample 7:
+📝 Expected: 'Kapıya memantin gibi farklı bir kilit takarsak, o zaman anahtar kapıyı açamaz ve...'
+🔵 Original: ' kapıya memantin gibi farklı bir kilit takarsak o zaman anahtar kapıya açamaz ve...'
+🟢 Fine-tuned: ' kapıya memantin gibi farklı bir kilit takarsak o zaman anahtar kapıya açamaz ve...'
+📈 Original similarity: 63.64%
+📈 Fine-tuned similarity: 63.64%
+   WER(O/F): 100.00% / 100.00% | CER(O/F): 100.00% / 100.00%
+   BLEU(O/F): 0.000 / 0.000 | chrF(O/F): 0.00 / 0.00
+   RTF(O/F): nan / nan
+🤔 Both models perform equally well!
+
+🎯 Sample 8:
+📝 Expected: 'Her eylemin fayda ve zararını tartar böylece sonuçta en fazla faydayı elde etmey...'
+🔵 Original: ' Her eylemin fayda ve zararını tartar, böylece sonuçta en fazla faydayı elde etm...'
+🟢 Fine-tuned: ' Her eylemin fayda ve zararını tartar, böylece sonuçta en fazla faydayı elde etm...'
+📈 Original similarity: 91.30%
+📈 Fine-tuned similarity: 91.30%
+   WER(O/F): 100.00% / 100.00% | CER(O/F): 100.00% / 100.00%
+   BLEU(O/F): 0.000 / 0.000 | chrF(O/F): 0.00 / 0.00
+   RTF(O/F): nan / nan
+🤔 Both models perform equally well!
+
+🎯 Sample 9:
+📝 Expected: 'Bu video da size sinir hücrelerini ve çeşitlerini anlatacağım. Adı üstünde, sini...'
+🔵 Original: ' Bu videoda size sinir hücrelerini ve çeşitlerini anlatacağım. Adı üstünde sinir...'
+🟢 Fine-tuned: ' Bu videoda size sinir hücrelerini ve çeşitlerini anlatacağım. Adı üstünde sinir...'
+📈 Original similarity: 58.82%
+📈 Fine-tuned similarity: 58.82%
+   WER(O/F): 100.00% / 100.00% | CER(O/F): 100.00% / 100.00%
+   BLEU(O/F): 0.000 / 0.000 | chrF(O/F): 0.00 / 0.00
+   RTF(O/F): nan / nan
+🤔 Both models perform equally well!
+
+🎯 Sample 10:
+📝 Expected: 'Resimde dünyayı kontrol eden bir duruşla betimlenmiş....'
+🔵 Original: ' Bu resimde dünyayı kontrol eden bir duruşla betimlenmiş....'
+🟢 Fine-tuned: ' Bu resimde dünyayı kontrol eden bir duruşla betimlenmiş....'
+📈 Original similarity: 87.50%
+📈 Fine-tuned similarity: 87.50%
+   WER(O/F): 100.00% / 100.00% | CER(O/F): 100.00% / 100.00%
+   BLEU(O/F): 0.000 / 0.000 | chrF(O/F): 0.00 / 0.00
+   RTF(O/F): nan / nan
+🤔 Both models perform equally well!
+
+🎯 Sample 11:
+📝 Expected: 'Şunu başka bir renkle yazayım A kişisi yılda 100 bin lira kazanıyor olsun. B kiş...'
+🔵 Original: ' Bu şunu başka bir renkle yazayım. A kişisi yılda yüz bin lira kazanıyor. B kişi...'
+🟢 Fine-tuned: ' A kişisi yılda 100 bin lira kazanıyor. B kişisi ise 1 milyon lira kazanıyor değ...'
+📈 Original similarity: 48.28%
+📈 Fine-tuned similarity: 50.00%
+   WER(O/F): 100.00% / 100.00% | CER(O/F): 100.00% / 100.00%
+   BLEU(O/F): 0.000 / 0.000 | chrF(O/F): 0.00 / 0.00
+   RTF(O/F): nan / nan
+✅ Fine-tuned model performs better on this sample!
+
+🎯 Sample 12:
+📝 Expected: 'Yani bu parayı alıp, mor paraya çeviriyorlar. Eğer bu olursa, sonuca ters etki y...'
+🔵 Original: ' Yani bu parayı alıp, mor paraya çeviriyorlar. Eğer bu olursa sonuca ters etki y...'
+🟢 Fine-tuned: ' Yani bu parayı alıp mor paraya çeviriyorlar. Eğer bu olursa sonuca ters etki ya...'
+📈 Original similarity: 85.71%
+📈 Fine-tuned similarity: 73.33%
+   WER(O/F): 100.00% / 100.00% | CER(O/F): 100.00% / 100.00%
+   BLEU(O/F): 0.000 / 0.000 | chrF(O/F): 0.00 / 0.00
+   RTF(O/F): nan / nan
+🔵 Original model performs better on this sample!
+
+🎯 Sample 13:
+📝 Expected: 'Eğer 2 tane A aleline sahipseniz, kesinlikle A kan grubuna sahip olursunuz....'
+🔵 Original: ' Eğer iki tane A aleline sahipseniz, kesinlikle A kan grubuna sahip olursunuz....'
+🟢 Fine-tuned: ' Eğer iki tane A aleline sahipseniz, kesinlikle A kan grubuna sahip olursunuz....'
+📈 Original similarity: 83.33%
+📈 Fine-tuned similarity: 83.33%
+   WER(O/F): 100.00% / 100.00% | CER(O/F): 100.00% / 100.00%
+   BLEU(O/F): 0.000 / 0.000 | chrF(O/F): 0.00 / 0.00
+   RTF(O/F): nan / nan
+🤔 Both models perform equally well!
+
+🎯 Sample 14:
+📝 Expected: 'Bu işlemin sonucu da 30.625'miş. evet, yani önceki videoda bulduğumuz değerin ay...'
+🔵 Original: ' Bu işlemin sonucuda 30.625. Yani önceki videoda bulduğumuz değerin aynısı....'
+🟢 Fine-tuned: ' Bu işlemin sonucu da 30 nokta 625miş. Yani önceki videoda bulduğumuz değerin ay...'
+📈 Original similarity: 57.14%
+📈 Fine-tuned similarity: 66.67%
+   WER(O/F): 100.00% / 100.00% | CER(O/F): 100.00% / 100.00%
+   BLEU(O/F): 0.000 / 0.000 | chrF(O/F): 0.00 / 0.00
+   RTF(O/F): nan / nan
+✅ Fine-tuned model performs better on this sample!
+
+🎯 Sample 15:
+📝 Expected: 'Bu yaşananlar, bazı yönleriyle, İngiltere'de olanlara benziyordu, ancak bazı açı...'
+🔵 Original: ' Bu yaşananlar bazı yönleriyle İngiltere'de olanlara benziyordu. Ancak bazı açıl...'
+🟢 Fine-tuned: ' Bu yaşananlar bazı yönleriyle İngiltere'de olanlara benziyordu. Ancak bazı açıl...'
+📈 Original similarity: 62.50%
+📈 Fine-tuned similarity: 60.61%
+   WER(O/F): 100.00% / 100.00% | CER(O/F): 100.00% / 100.00%
+   BLEU(O/F): 0.000 / 0.000 | chrF(O/F): 0.00 / 0.00
+   RTF(O/F): nan / nan
+🔵 Original model performs better on this sample!
+                                                       Summary Table                                                       
+┏━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━┓
+┃ Sample ┃ Original % ┃ Fine-tuned % ┃         WER O/F ┃         CER O/F ┃    BLEU O/F ┃  chrF O/F ┃ RTF O/F ┃ Best       ┃
+┡━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━┩
+│ 1      │     47.62% │       40.91% │ 100.00%/100.00% │ 100.00%/100.00% │ 0.000/0.000 │ 0.00/0.00 │ nan/nan │ Original   │
+│ 2      │     76.47% │       87.50% │ 100.00%/100.00% │ 100.00%/100.00% │ 0.000/0.000 │ 0.00/0.00 │ nan/nan │ Fine-tuned │
+│ 3      │     75.00% │       75.00% │ 100.00%/100.00% │ 100.00%/100.00% │ 0.000/0.000 │ 0.00/0.00 │ nan/nan │ Equal      │
+│ 4      │     75.00% │       75.00% │ 100.00%/100.00% │ 100.00%/100.00% │ 0.000/0.000 │ 0.00/0.00 │ nan/nan │ Equal      │
+│ 5      │     60.00% │       71.43% │ 100.00%/100.00% │ 100.00%/100.00% │ 0.000/0.000 │ 0.00/0.00 │ nan/nan │ Fine-tuned │
+│ 6      │     52.27% │       58.14% │ 100.00%/100.00% │ 100.00%/100.00% │ 0.000/0.000 │ 0.00/0.00 │ nan/nan │ Fine-tuned │
+│ 7      │     63.64% │       63.64% │ 100.00%/100.00% │ 100.00%/100.00% │ 0.000/0.000 │ 0.00/0.00 │ nan/nan │ Equal      │
+│ 8      │     91.30% │       91.30% │ 100.00%/100.00% │ 100.00%/100.00% │ 0.000/0.000 │ 0.00/0.00 │ nan/nan │ Equal      │
+│ 9      │     58.82% │       58.82% │ 100.00%/100.00% │ 100.00%/100.00% │ 0.000/0.000 │ 0.00/0.00 │ nan/nan │ Equal      │
+│ 10     │     87.50% │       87.50% │ 100.00%/100.00% │ 100.00%/100.00% │ 0.000/0.000 │ 0.00/0.00 │ nan/nan │ Equal      │
+│ 11     │     48.28% │       50.00% │ 100.00%/100.00% │ 100.00%/100.00% │ 0.000/0.000 │ 0.00/0.00 │ nan/nan │ Fine-tuned │
+│ 12     │     85.71% │       73.33% │ 100.00%/100.00% │ 100.00%/100.00% │ 0.000/0.000 │ 0.00/0.00 │ nan/nan │ Original   │
+│ 13     │     83.33% │       83.33% │ 100.00%/100.00% │ 100.00%/100.00% │ 0.000/0.000 │ 0.00/0.00 │ nan/nan │ Equal      │
+│ 14     │     57.14% │       66.67% │ 100.00%/100.00% │ 100.00%/100.00% │ 0.000/0.000 │ 0.00/0.00 │ nan/nan │ Fine-tuned │
+│ 15     │     62.50% │       60.61% │ 100.00%/100.00% │ 100.00%/100.00% │ 0.000/0.000 │ 0.00/0.00 │ nan/nan │ Original   │
+└────────┴────────────┴──────────────┴─────────────────┴─────────────────┴─────────────┴───────────┴─────────┴────────────┘
+
+🏆 AVERAGE PERFORMANCE:
+🔵 Original model average similarity: 68.31%
+🟢 Fine-tuned model average similarity: 69.55%
+   WER(O/F): 100.00% / 100.00% | CER(O/F): 100.00% / 100.00%
+   BLEU(O/F): 0.000 / 0.000 | chrF(O/F): 0.00 / 0.00
+   RTF(O/F): 0.000 / 0.000
+🎉 Fine-tuned model performs 1.8% better!
+✅ Fine-tuning successful!
+
+✅ Test completed!
+📄 Log saved: C:\Users\emreq\Desktop\Code - Lib - Denemeler\Fine Tuning\Whisper Turkish Fine Tuning\logs\manual_audio_test_20250919-181827.txt

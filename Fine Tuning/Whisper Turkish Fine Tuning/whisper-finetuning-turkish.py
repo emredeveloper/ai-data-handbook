@@ -64,8 +64,8 @@ def main():
         print(f"Train samples: {len(dataset['train'])}")
         print(f"Test samples: {len(dataset['test'])}")
         
-        # Train with 1000 training and 100 test samples
-        desired_train = 1000
+        # Train with 5000 training and 100 test samples
+        desired_train = 5000
         desired_test = 100
         print(f"Subsampling dataset ({desired_train} train, {desired_test} test)...")
         dataset["train"] = dataset["train"].select(range(min(desired_train, len(dataset["train"]) )))
@@ -266,24 +266,33 @@ def main():
 
     # Training arguments
     print("Setting up training configuration...")
+    use_fp16 = torch.cuda.is_available()
+    # Enable TF32 on Ampere+ GPUs for extra throughput (no code accuracy change for Whisper)
+    if use_fp16:
+        try:
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
+        except Exception:
+            pass
     training_args = Seq2SeqTrainingArguments(
         output_dir="./whisper-small-turkish",
         per_device_train_batch_size=2,
-        gradient_accumulation_steps=4,  # effective batch size increases, stability improves
-        learning_rate=1e-5,
-        lr_scheduler_type="linear",  # linear scheduler for steadier learning
-        warmup_steps=50,  # longer warmup
-        max_steps=250,  # ~1 epoch (> 1000/ (2*4) ≈ 125 step/epoch)
+        gradient_accumulation_steps=6,  # larger effective batch without extra VRAM
+        learning_rate=2e-5,
+        lr_scheduler_type="cosine",  # faster progress in short runs
+        warmup_steps=0,
+        max_steps=10,  # quick test run with fewer steps
         gradient_checkpointing=False,
-        fp16=False,
-        fp16_full_eval=False,
+        fp16=use_fp16,
+        fp16_full_eval=use_fp16,
         eval_strategy="steps",
-        per_device_eval_batch_size=2,
+        per_device_eval_batch_size=8,  # faster evaluation
         predict_with_generate=True,
-        generation_max_length=225,
-        save_steps=50,
-        eval_steps=50,
-        logging_steps=10,
+        generation_max_length=300,
+        generation_num_beams=5,
+        save_steps=10,
+        eval_steps=10,
+        logging_steps=1,
         report_to=["tensorboard"],
         load_best_model_at_end=True,
         metric_for_best_model="wer",
@@ -291,6 +300,8 @@ def main():
         push_to_hub=False,
         hub_strategy="checkpoint",
         dataloader_num_workers=0,
+        dataloader_pin_memory=True,
+        weight_decay=0.01,
     )
 
     # Create trainer
