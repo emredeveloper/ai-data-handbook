@@ -417,4 +417,3 @@ yemin edilmişti. Ama işler Fransa'da özellikle de, özellikle de Paris'te kar
 ✅ Fine-tuning successful!
 
 ✅ Test completed!
-📄 Log saved: C:\Users\emreq\Desktop\Code - Lib - Denemeler\Fine Tuning\Whisper Turkish Fine Tuning\logs\manual_audio_test_20250919-181827.txt
