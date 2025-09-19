@@ -1,5 +1,5 @@
 """
-Hugging Face Hub'a giriş yapmak için ayrı script
+Separate script to log in to Hugging Face Hub
 """
 
 from huggingface_hub import login
@@ -7,22 +7,22 @@ import os
 
 def huggingface_login():
     """
-    Hugging Face Hub'a giriş yapar
+    Logs in to Hugging Face Hub
     """
-    print("Hugging Face Hub'a giriş yapılıyor...")
+    print("Logging in to Hugging Face Hub...")
     
-    # Eğer token environment variable'da varsa kullan
+    # If token exists in environment variable, use it
     token = os.getenv("HUGGINGFACE_TOKEN")
     
     if token:
-        print("Environment variable'dan token alınıyor...")
+        print("Using token from environment variable...")
         login(token=token)
-        print("Giriş başarılı!")
+        print("Login successful!")
     else:
-        print("Token bulunamadı. Manuel giriş yapılacak...")
-        print("Token'ınızı https://huggingface.co/settings/tokens adresinden alabilirsiniz")
+        print("Token not found. Proceeding with manual login...")
+        print("You can get your token from https://huggingface.co/settings/tokens")
         login()
-        print("Giriş başarılı!")
+        print("Login successful!")
 
 if __name__ == "__main__":
     huggingface_login()

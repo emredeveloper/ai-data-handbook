@@ -1,5 +1,5 @@
 """
-Manuel Audio Test - Gerçek Ses Verisi ile Test
+Manual Audio Test - Test with Real Audio Data
 """
 
 import torch
@@ -22,22 +22,22 @@ import warnings
 warnings.filterwarnings("ignore")
 
 def load_real_audio_from_dataset():
-    """Hugging Face verisetinden GERÇEK ve EĞİTİMDE KULLANILMAMIŞ ses verisi yükle"""
-    print("🎵 Hugging Face'den gerçek ses verisi yükleniyor...")
+    """Load REAL and NOT USED IN TRAINING audio data from a Hugging Face dataset"""
+    print("🎵 Loading real audio data from Hugging Face...")
     
     try:
-        # Khan Academy Türkçe dataset'ini yükle
-        print("📥 Khan Academy Türkçe dataset'i yükleniyor...")
+        # Load Khan Academy Turkish dataset
+        print("📥 Loading Khan Academy Turkish dataset...")
         dataset = load_dataset("ysdede/khanacademy-turkish")
         
-        # Split'i garanti altına al (seed=42 ile, eğitim scriptiyle uyumlu)
+        # Ensure split (with seed=42 to align with training script)
         if "train" not in dataset:
             dataset = dataset["train"].train_test_split(test_size=0.2, seed=42)
         
         train_dataset = dataset["train"]
         test_dataset = dataset["test"] if "test" in dataset else dataset["train"].train_test_split(test_size=0.2, seed=42)["test"]
         
-        # Sütun isimlerini kontrol et (test split üzerinden)
+        # Check column names (on test split)
         if "transcription" in test_dataset.column_names:
             text_column = "transcription"
         elif "sentence" in test_dataset.column_names:
@@ -45,14 +45,14 @@ def load_real_audio_from_dataset():
         else:
             text_column = "text"
         
-        print(f"Dataset sütunları: {test_dataset.column_names}")
-        print(f"Train boyutu: {len(train_dataset)} | Test boyutu: {len(test_dataset)}")
+        print(f"Dataset columns: {test_dataset.column_names}")
+        print(f"Train size: {len(train_dataset)} | Test size: {len(test_dataset)}")
         
-        # Audio sampling rate'ini ayarla (test split)
-        print("📡 Audio sampling rate ayarlanıyor (test split)...")
+        # Set audio sampling rate (test split)
+        print("📡 Setting audio sampling rate (test split)...")
         test_dataset = test_dataset.cast_column("audio", Audio(sampling_rate=16000))
         
-        # Eğitim sırasında eval için kullanılan ilk 100 test örneğini dışla; sonrasından 15 örnek al
+        # Exclude first 100 test samples used for eval during training; then take 15 samples
         desired = 15
         exclude_eval_count = 100
         start_idx = exclude_eval_count if len(test_dataset) > exclude_eval_count + desired else 0
@@ -61,12 +61,12 @@ def load_real_audio_from_dataset():
         test_samples = []
         for j, i in enumerate(range(start_idx, end_idx), start=1):
             try:
-                print(f"📥 Örnek {j} yükleniyor (test idx={i})...")
+                print(f"📥 Loading sample {j} (test idx={i})...")
                 sample = test_dataset[i]
                 audio_data = sample["audio"]
                 text_data = sample[text_column]
                 
-                print(f"Audio data tipi: {type(audio_data)}")
+                print(f"Audio data type: {type(audio_data)}")
                 print(f"Audio data keys: {audio_data.keys() if isinstance(audio_data, dict) else 'Not dict'}")
                 
                 test_samples.append({
@@ -75,27 +75,27 @@ def load_real_audio_from_dataset():
                     "text": text_data,
                     "index": i
                 })
-                print(f"✅ Örnek {j}: '{text_data[:50]}...' ({len(audio_data['array'])} sample)")
+                print(f"✅ Sample {j}: '{text_data[:50]}...' ({len(audio_data['array'])} samples)")
                 
             except Exception as e:
-                print(f"❌ Örnek {j} işlenemedi: {e}")
-                print(f"Hata detayı: {type(e).__name__}: {str(e)}")
+                print(f"❌ Sample {j} could not be processed: {e}")
+                print(f"Error detail: {type(e).__name__}: {str(e)}")
                 continue
         
         if test_samples:
-            print(f"✅ {len(test_samples)} gerçek audio örneği yüklendi (eğitimde kullanılmayan)!")
+            print(f"✅ Loaded {len(test_samples)} real audio samples (not used in training)!")
             return test_samples
         else:
-            print("❌ Hiçbir örnek işlenemedi!")
+            print("❌ No samples could be processed!")
             raise Exception("No samples processed")
         
     except Exception as e:
-        print(f"❌ Khan Academy dataset hatası: {e}")
-        print(f"Hata tipi: {type(e).__name__}")
-        print("🔄 Common Voice Türkçe dataset'ini deneniyor...")
+        print(f"❌ Khan Academy dataset error: {e}")
+        print(f"Error type: {type(e).__name__}")
+        print("🔄 Trying Common Voice Turkish dataset...")
         
         try:
-            # Fallback: Common Voice Türkçe
+            # Fallback: Common Voice Turkish
             dataset = load_dataset("mozilla-foundation/common_voice_13_0", "tr", split="train")
             dataset = dataset.cast_column("audio", Audio(sampling_rate=16000))
             
@@ -112,9 +112,9 @@ def load_real_audio_from_dataset():
                         "text": text_data,
                         "index": i
                     })
-                    print(f"✅ CV Örnek {i+1}: '{text_data[:50]}...' ({len(audio_data['array'])} sample)")
+                    print(f"✅ CV Sample {i+1}: '{text_data[:50]}...' ({len(audio_data['array'])} samples)")
                 except Exception as e:
-                    print(f"❌ CV Örnek {i+1} işlenemedi: {e}")
+                    print(f"❌ CV Sample {i+1} could not be processed: {e}")
                     continue
             
             if test_samples:
@@ -123,59 +123,59 @@ def load_real_audio_from_dataset():
                 raise Exception("Common Voice samples failed")
             
         except Exception as e2:
-            print(f"❌ Common Voice dataset hatası: {e2}")
-            print("⚠️ Synthetic audio'ya geçiliyor...")
+            print(f"❌ Common Voice dataset error: {e2}")
+            print("⚠️ Switching to synthetic audio...")
             return create_realistic_test_audio()
 
 def create_realistic_test_audio():
-    """Daha gerçekçi test audio'su oluştur - konuşma benzeri"""
-    print("🎵 Gerçekçi test audio oluşturuluyor...")
+    """Create more realistic test audio - speech-like"""
+    print("🎵 Creating realistic test audio...")
     
     sample_rate = 16000
     
-    # Türkçe sesler için gerçekçi frekans aralıkları
+    # Realistic frequency ranges for Turkish speech
     test_samples = []
     
-    # Örnek 1: Kısa cümle
+    # Sample 1: Short sentence
     duration1 = 3.0
     t1 = np.linspace(0, duration1, int(sample_rate * duration1))
     
-    # İnsan sesi frekans aralığında (85-255 Hz temel frekans)
+    # Within human voice frequency range (85-255 Hz fundamental)
     fundamental = 150  # Hz
     audio1 = np.zeros_like(t1)
     
-    # Harmonikler ekle (konuşma benzeri)
+    # Add harmonics (speech-like)
     for harmonic in range(1, 6):
         freq = fundamental * harmonic
-        amplitude = 0.3 / harmonic  # Her harmonik daha zayıf
+        amplitude = 0.3 / harmonic  # each harmonic weaker
         audio1 += amplitude * np.sin(2 * np.pi * freq * t1)
     
-    # Modülasyon ekle (konuşma benzeri)
-    modulation = 0.1 * np.sin(2 * np.pi * 5 * t1)  # 5 Hz modülasyon
+    # Add modulation (speech-like)
+    modulation = 0.1 * np.sin(2 * np.pi * 5 * t1)  # 5 Hz modulation
     audio1 *= (1 + modulation)
     
-    # Envelope ekle (başlangıç ve bitiş yumuşak)
+    # Add envelope (soft attack/release)
     envelope1 = np.ones_like(t1)
-    fade_samples = int(0.1 * sample_rate)  # 0.1 saniye fade
+    fade_samples = int(0.1 * sample_rate)  # 0.1 second fade
     envelope1[:fade_samples] = np.linspace(0, 1, fade_samples)
     envelope1[-fade_samples:] = np.linspace(1, 0, fade_samples)
     audio1 *= envelope1
     
-    # Gürültü ekle
+    # Add noise
     audio1 += 0.02 * np.random.normal(0, 1, len(t1))
     
     test_samples.append({
         "audio_array": audio1.astype(np.float32),
         "sampling_rate": sample_rate,
-        "text": "Merhaba, ben Türkçe konuşan bir test ses dosyasıyım.",
+        "text": "Hello, I am a test audio file speaking Turkish.",
         "index": 0
     })
     
-    # Örnek 2: Farklı ton
+    # Sample 2: Different pitch
     duration2 = 2.5
     t2 = np.linspace(0, duration2, int(sample_rate * duration2))
     
-    fundamental2 = 200  # Hz (daha yüksek ton)
+    fundamental2 = 200  # Hz (higher pitch)
     audio2 = np.zeros_like(t2)
     
     for harmonic in range(1, 5):
@@ -183,7 +183,7 @@ def create_realistic_test_audio():
         amplitude = 0.25 / harmonic
         audio2 += amplitude * np.sin(2 * np.pi * freq * t2)
     
-    # Farklı modülasyon
+    # Different modulation
     modulation2 = 0.15 * np.sin(2 * np.pi * 3 * t2)
     audio2 *= (1 + modulation2)
     
@@ -194,31 +194,31 @@ def create_realistic_test_audio():
     envelope2[-fade_samples2:] = np.linspace(1, 0, fade_samples2)
     audio2 *= envelope2
     
-    # Gürültü
+    # Noise
     audio2 += 0.015 * np.random.normal(0, 1, len(t2))
     
     test_samples.append({
         "audio_array": audio2.astype(np.float32),
         "sampling_rate": sample_rate,
-        "text": "Bu ikinci Türkçe test cümlesi, farklı bir tonla söylenmiştir.",
+        "text": "This is the second Turkish test sentence, spoken with a different pitch.",
         "index": 1
     })
     
-    # Örnek 3: Daha uzun cümle
+    # Sample 3: Longer sentence
     duration3 = 4.0
     t3 = np.linspace(0, duration3, int(sample_rate * duration3))
     
-    fundamental3 = 120  # Hz (daha düşük ton)
+    fundamental3 = 120  # Hz (lower pitch)
     audio3 = np.zeros_like(t3)
     
     for harmonic in range(1, 7):
         freq = fundamental3 * harmonic
         amplitude = 0.35 / harmonic
-        # Frekans değişimi ekle (prosodi)
+        # Add frequency variation (prosody)
         freq_variation = freq * (1 + 0.05 * np.sin(2 * np.pi * 0.5 * t3))
         audio3 += amplitude * np.sin(2 * np.pi * freq_variation * t3)
     
-    # Daha karmaşık modülasyon
+    # More complex modulation
     modulation3 = 0.2 * np.sin(2 * np.pi * 4 * t3) * np.exp(-t3/2)
     audio3 *= (1 + modulation3)
     
@@ -229,29 +229,29 @@ def create_realistic_test_audio():
     envelope3[-fade_samples3:] = np.linspace(1, 0, fade_samples3)
     audio3 *= envelope3
     
-    # Gürültü
+    # Noise
     audio3 += 0.01 * np.random.normal(0, 1, len(t3))
     
     test_samples.append({
         "audio_array": audio3.astype(np.float32),
         "sampling_rate": sample_rate,
-        "text": "Whisper modeli Türkçe konuşmaları çok başarılı bir şekilde yazıya çeviriyor.",
+        "text": "The Whisper model transcribes Turkish speech very successfully.",
         "index": 2
     })
     
-    print(f"✅ {len(test_samples)} gerçekçi audio örneği oluşturuldu")
+    print(f"✅ {len(test_samples)} realistic audio samples created")
     return test_samples
 
 def create_fallback_audio():
-    """Fallback: Basit ses verisi oluştur"""
-    print("🎵 Fallback: Basit test audio oluşturuluyor...")
+    """Fallback: Create simple audio data"""
+    print("🎵 Fallback: Creating simple test audio...")
     
     sample_rate = 16000
     duration = 2.0
     
     t = np.linspace(0, duration, int(sample_rate * duration))
     
-    # Daha basit ve temiz ses
+    # Simpler and cleaner audio
     test_samples = [
         {
             "audio_array": (
@@ -259,7 +259,7 @@ def create_fallback_audio():
                 0.05 * np.random.normal(0, 1, len(t))
             ).astype(np.float32),
             "sampling_rate": sample_rate,
-            "text": "Test sesi bir.",
+            "text": "Test audio one.",
             "index": 0
         },
         {
@@ -268,18 +268,18 @@ def create_fallback_audio():
                 0.05 * np.random.normal(0, 1, len(t))
             ).astype(np.float32),
             "sampling_rate": sample_rate,
-            "text": "Test sesi iki.",
+            "text": "Test audio two.",
             "index": 1
         }
     ]
     
-    print(f"✅ {len(test_samples)} basit audio örneği oluşturuldu")
+    print(f"✅ {len(test_samples)} simple audio samples created")
     return test_samples
 
 def test_single_audio(audio_data, expected_text, sample_index):
-    """Tek bir ses örneğini test et"""
-    print(f"\n🎯 Örnek {sample_index + 1} Test Ediliyor:")
-    print(f"📝 Beklenen metin: '{expected_text[:100]}...'")
+    """Test a single audio sample"""
+    print(f"\n🎯 Testing Sample {sample_index + 1}:")
+    print(f"📝 Expected text: '{expected_text[:100]}...'")
     print("-" * 50)
     
     audio_array = audio_data["audio_array"]
@@ -287,24 +287,24 @@ def test_single_audio(audio_data, expected_text, sample_index):
     
     results = {}
     
-    # Yardımcı: metin normalizasyonu
+    # Helper: text normalization
     def normalize_text(text: str) -> str:
         if not text:
             return ""
         text = text.lower()
-        # Türkçe karakterleri sadeleştirme değil; sadece Unicode NFKC normalize
+        # Do not simplify Turkish characters; only apply Unicode NFKC normalization
         text = unicodedata.normalize("NFKC", text)
-        # Fazla boşluk, noktalama sadeleştirme
+        # Simplify excessive spaces and punctuation
         text = re.sub(r"[\s]+", " ", text).strip()
         return text
 
-    # Metrikler
-    wer_metric = evaluate.load("wer")  # yedek
-    cer_metric = evaluate.load("cer")  # yedek
-    # sacreBLEU/chrF daha istikrarlı sonuç verir
-    # BLEU: 0-100, chrF: 0-100 döner
+    # Metrics
+    wer_metric = evaluate.load("wer")  # backup
+    cer_metric = evaluate.load("cer")  # backup
+    # sacreBLEU/chrF provide more stable results
+    # BLEU: 0-100, chrF: 0-100
 
-    # jiwer normalizasyon zinciri (TR dostu basitleştirilmiş)
+    # jiwer normalization chain (simplified and TR-friendly)
     jiwer_transform = jiwer.Compose([
         jiwer.ToLowerCase(),
         jiwer.RemoveMultipleSpaces(),
@@ -312,13 +312,13 @@ def test_single_audio(audio_data, expected_text, sample_index):
         jiwer.RemovePunctuation()
     ])
 
-    # Orijinal model
-    print("🔵 Orijinal Whisper Small ile test...")
+    # Original model
+    print("🔵 Testing with Original Whisper Small...")
     try:
         original_processor = WhisperProcessor.from_pretrained("openai/whisper-small")
         original_model = WhisperForConditionalGeneration.from_pretrained("openai/whisper-small")
         
-        # Audio'yu işle
+        # Process audio
         inputs = original_processor(
             audio_array, 
             sampling_rate=sampling_rate, 
@@ -357,33 +357,33 @@ def test_single_audio(audio_data, expected_text, sample_index):
         results["original_seq_score"] = original_seq_score
         results["original_latency_s"] = orig_latency
         results["original_rtf"] = orig_rtf
-        print(f"🔵 Orijinal sonuç: '{original_text}'")
+        print(f"🔵 Original result: '{original_text}'")
         
     except Exception as e:
-        print(f"❌ Orijinal model hatası: {e}")
+        print(f"❌ Original model error: {e}")
         results["original"] = ""
     
     # Fine-tuned model
-    print("🟢 Fine-tuned Whisper Small ile test...")
+    print("🟢 Testing with Fine-tuned Whisper Small...")
     try:
-        # Processor'ı orijinal model'den al
+        # Use processor from original model
         finetuned_processor = WhisperProcessor.from_pretrained("openai/whisper-small")
         
-        # Fine-tuned model'i yükle - en son checkpoint'i bul
+        # Load fine-tuned model - find latest checkpoint
         import os
         import glob
         
         checkpoint_dirs = glob.glob("./whisper-small-turkish/checkpoint-*")
         if checkpoint_dirs:
-            # En yüksek numaralı checkpoint'i al
+            # Take the highest-numbered checkpoint
             latest_checkpoint = max(checkpoint_dirs, key=lambda x: int(x.split('-')[-1]))
-            print(f"📁 En son checkpoint kullanılıyor: {latest_checkpoint}")
+            print(f"📁 Using latest checkpoint: {latest_checkpoint}")
             finetuned_model = WhisperForConditionalGeneration.from_pretrained(latest_checkpoint)
         else:
-            print("❌ Hiç checkpoint bulunamadı!")
+            print("❌ No checkpoints found!")
             raise FileNotFoundError("No checkpoint found")
         
-        # Audio'yu işle
+        # Process audio
         inputs = finetuned_processor(
             audio_array, 
             sampling_rate=sampling_rate, 
@@ -422,20 +422,20 @@ def test_single_audio(audio_data, expected_text, sample_index):
         results["finetuned_seq_score"] = finetuned_seq_score
         results["finetuned_latency_s"] = fine_latency
         results["finetuned_rtf"] = fine_rtf
-        print(f"🟢 Fine-tuned sonuç: '{finetuned_text}'")
+        print(f"🟢 Fine-tuned result: '{finetuned_text}'")
         
     except Exception as e:
-        print(f"❌ Fine-tuned model hatası: {e}")
+        print(f"❌ Fine-tuned model error: {e}")
         results["finetuned"] = ""
     
-    # Metin normalizasyonu ve metrikler
+    # Text normalization and metrics
     ref_norm = normalize_text(expected_text)
     orig_norm = normalize_text(results.get("original", ""))
     fine_norm = normalize_text(results.get("finetuned", ""))
 
-    # Robust metrikler: jiwer + sacrebleu + custom CER
+    # Robust metrics: jiwer + sacrebleu + custom CER
     def cer_custom(ref: str, hyp: str) -> float:
-        # Levenshtein mesafesi (karakter bazlı)
+        # Levenshtein distance (character-based)
         r, h = ref, hyp
         n, m = len(r), len(h)
         if n == 0:
@@ -455,14 +455,14 @@ def test_single_audio(audio_data, expected_text, sample_index):
                 )
         return dp[n][m] / max(1, n)
 
-    # jiwer WER (0-1), CER custom (0-1)
-    # jiwer sürümleri arasında API farkları olduğundan, ön-normalize edilmiş metinlerle direkt çağırıyoruz
+    # jiwer WER (0-1), custom CER (0-1)
+    # Due to API differences across jiwer versions, call directly with pre-normalized texts
     wer_o = jiwer.wer(ref_norm, orig_norm) if ref_norm else 1.0
     wer_f = jiwer.wer(ref_norm, fine_norm) if ref_norm else 1.0
     cer_o = cer_custom(ref_norm, orig_norm) if ref_norm else 1.0
     cer_f = cer_custom(ref_norm, fine_norm) if ref_norm else 1.0
 
-    # sacreBLEU ve chrF (0-100)
+    # sacreBLEU and chrF (0-100)
     bleu_o = sacrebleu.corpus_bleu([orig_norm], [[ref_norm]]).score if ref_norm else 0.0
     bleu_f = sacrebleu.corpus_bleu([fine_norm], [[ref_norm]]).score if ref_norm else 0.0
     chrf_o = sacrebleu.corpus_chrf([orig_norm], [[ref_norm]]).score if ref_norm else 0.0
@@ -486,7 +486,7 @@ def test_single_audio(audio_data, expected_text, sample_index):
     return results, expected_text
 
 def calculate_similarity(text1, text2):
-    """İki metin arasındaki benzerliği hesapla (basit)"""
+    """Compute similarity between two texts (simple)"""
     if not text1 or not text2:
         return 0.0
     
@@ -502,7 +502,7 @@ def calculate_similarity(text1, text2):
     return intersection / union if union > 0 else 0.0
 
 def test_models():
-    # Rich console ve log yakalama
+    # Rich console and log capture
     console = Console(record=True)
     original_print = builtins.print
     def rich_print(*args, **kwargs):
@@ -514,21 +514,21 @@ def test_models():
     ts = time.strftime("%Y%m%d-%H%M%S")
     log_path = os.path.join(logs_dir, f"manual_audio_test_{ts}.txt")
 
-    console.print(Panel.fit("🎯 Manuel Audio Test - Gerçek Ses Verisi ile", style="bold cyan"))
+    console.print(Panel.fit("🎯 Manual Audio Test - With Real Audio Data", style="bold cyan"))
     print("=" * 60)
     
-    # Gerçek ses verilerini yükle
+    # Load real audio data
     test_samples = load_real_audio_from_dataset()
     
     if not test_samples:
-        print("❌ Test verileri yüklenemedi!")
+        print("❌ Test data could not be loaded!")
         return
     
-    print(f"\n📊 {len(test_samples)} örnek ile test yapılacak...")
+    print(f"\n📊 Testing with {len(test_samples)} samples...")
     
     all_results = []
     
-    # Her örneği test et
+    # Test each sample
     for i, sample in enumerate(test_samples):
         results, expected_text = test_single_audio(sample, sample["text"], i)
         all_results.append({
@@ -539,9 +539,9 @@ def test_models():
             "audio_length": len(sample["audio_array"])
         })
     
-    # Genel sonuçları değerlendir
+    # Evaluate overall results
     print("\n" + "=" * 60)
-    print("📊 GENEL SONUÇLAR:")
+    print("📊 OVERALL RESULTS:")
     print("=" * 60)
     
     original_similarities = []
@@ -553,12 +553,12 @@ def test_models():
     rtf_o_list, rtf_f_list = [], []
     
     for i, result in enumerate(all_results):
-        print(f"\n🎯 Örnek {i + 1}:")
-        print(f"📝 Beklenen: '{result['expected'][:80]}...'")
-        print(f"🔵 Orijinal: '{result['original'][:80]}...'")
+        print(f"\n🎯 Sample {i + 1}:")
+        print(f"📝 Expected: '{result['expected'][:80]}...'")
+        print(f"🔵 Original: '{result['original'][:80]}...'")
         print(f"🟢 Fine-tuned: '{result['finetuned'][:80]}...'")
         
-        # Benzerlik hesapla
+        # Compute similarity
         orig_sim = calculate_similarity(result['expected'], result['original'])
         fine_sim = calculate_similarity(result['expected'], result['finetuned'])
         
@@ -576,33 +576,33 @@ def test_models():
         rtf_o_list.append(result.get("original_rtf", float("nan")))
         rtf_f_list.append(result.get("finetuned_rtf", float("nan")))
         
-        print(f"📈 Orijinal benzerlik: {orig_sim:.2%}")
-        print(f"📈 Fine-tuned benzerlik: {fine_sim:.2%}")
+        print(f"📈 Original similarity: {orig_sim:.2%}")
+        print(f"📈 Fine-tuned similarity: {fine_sim:.2%}")
         print(f"   WER(O/F): {m.get('wer_original', 1.0):.2%} / {m.get('wer_finetuned', 1.0):.2%} | CER(O/F): {m.get('cer_original', 1.0):.2%} / {m.get('cer_finetuned', 1.0):.2%}")
         print(f"   BLEU(O/F): {m.get('bleu_original', 0.0):.3f} / {m.get('bleu_finetuned', 0.0):.3f} | chrF(O/F): {m.get('chrf_original', 0.0):.2f} / {m.get('chrf_finetuned', 0.0):.2f}")
         print(f"   RTF(O/F): {result.get('original_rtf', float('nan')):.3f} / {result.get('finetuned_rtf', float('nan')):.3f}")
         
         if fine_sim > orig_sim:
-            print("✅ Fine-tuned model bu örnekte daha başarılı!")
+            print("✅ Fine-tuned model performs better on this sample!")
         elif orig_sim > fine_sim:
-            print("🔵 Orijinal model bu örnekte daha başarılı!")
+            print("🔵 Original model performs better on this sample!")
         else:
-            print("🤔 İki model de eşit başarılı!")
+            print("🤔 Both models perform equally well!")
     
-    # Özet tablo
-    table = Table(title="Özet Tablo", show_lines=False)
-    table.add_column("Örnek", style="bold")
-    table.add_column("Orijinal %", justify="right")
+    # Summary table
+    table = Table(title="Summary Table", show_lines=False)
+    table.add_column("Sample", style="bold")
+    table.add_column("Original %", justify="right")
     table.add_column("Fine-tuned %", justify="right")
     table.add_column("WER O/F", justify="right")
     table.add_column("CER O/F", justify="right")
     table.add_column("BLEU O/F", justify="right")
     table.add_column("chrF O/F", justify="right")
     table.add_column("RTF O/F", justify="right")
-    table.add_column("En iyi", style="green")
+    table.add_column("Best", style="green")
     for idx, (orig_sim, fine_sim, wer_o, wer_f, cer_o, cer_f, bleu_o, bleu_f, chrf_o, chrf_f, rtf_o, rtf_f) in enumerate(
         zip(original_similarities, finetuned_similarities, wer_o_list, wer_f_list, cer_o_list, cer_f_list, bleu_o_list, bleu_f_list, chrf_o_list, chrf_f_list, rtf_o_list, rtf_f_list), start=1):
-        winner = "Fine-tuned" if fine_sim > orig_sim else ("Orijinal" if orig_sim > fine_sim else "Eşit")
+        winner = "Fine-tuned" if fine_sim > orig_sim else ("Original" if orig_sim > fine_sim else "Equal")
         table.add_row(
             str(idx),
             f"{orig_sim*100:.2f}%",
@@ -616,7 +616,7 @@ def test_models():
         )
     console.print(table)
 
-    # Ortalama performans
+    # Average performance
     avg_original = sum(original_similarities) / len(original_similarities) if original_similarities else 0
     avg_finetuned = sum(finetuned_similarities) / len(finetuned_similarities) if finetuned_similarities else 0
     avg_wer_o = sum(wer_o_list) / len(wer_o_list) if wer_o_list else 1.0
@@ -630,29 +630,29 @@ def test_models():
     avg_rtf_o = sum(x for x in rtf_o_list if not np.isnan(x)) / max(1, sum(0 if np.isnan(x) else 1 for x in rtf_o_list))
     avg_rtf_f = sum(x for x in rtf_f_list if not np.isnan(x)) / max(1, sum(0 if np.isnan(x) else 1 for x in rtf_f_list))
     
-    print(f"\n🏆 ORTALAMA PERFORMANS:")
-    print(f"🔵 Orijinal model ortalama benzerlik: {avg_original:.2%}")
-    print(f"🟢 Fine-tuned model ortalama benzerlik: {avg_finetuned:.2%}")
+    print(f"\n🏆 AVERAGE PERFORMANCE:")
+    print(f"🔵 Original model average similarity: {avg_original:.2%}")
+    print(f"🟢 Fine-tuned model average similarity: {avg_finetuned:.2%}")
     print(f"   WER(O/F): {avg_wer_o:.2%} / {avg_wer_f:.2%} | CER(O/F): {avg_cer_o:.2%} / {avg_cer_f:.2%}")
     print(f"   BLEU(O/F): {avg_bleu_o:.3f} / {avg_bleu_f:.3f} | chrF(O/F): {avg_chrf_o:.2f} / {avg_chrf_f:.2f}")
     print(f"   RTF(O/F): {avg_rtf_o:.3f} / {avg_rtf_f:.3f}")
     
     if avg_finetuned > avg_original:
         improvement = ((avg_finetuned - avg_original) / avg_original * 100) if avg_original > 0 else 0
-        print(f"🎉 Fine-tuned model {improvement:.1f}% daha iyi performans gösteriyor!")
-        print("✅ Fine-tuning başarılı!")
+        print(f"🎉 Fine-tuned model performs {improvement:.1f}% better!")
+        print("✅ Fine-tuning successful!")
     elif avg_original > avg_finetuned:
         decline = ((avg_original - avg_finetuned) / avg_original * 100) if avg_original > 0 else 0
-        print(f"⚠️ Fine-tuned model {decline:.1f}% daha kötü performans gösteriyor!")
-        print("🔄 Fine-tuning parametrelerini gözden geçirmeniz gerekebilir.")
+        print(f"⚠️ Fine-tuned model performs {decline:.1f}% worse!")
+        print("🔄 You may need to review the fine-tuning parameters.")
     else:
-        print("🤔 İki model de benzer performans gösteriyor.")
+        print("🤔 Both models show similar performance.")
     
-    print("\n✅ Test tamamlandı!")
+    print("\n✅ Test completed!")
 
-    # Log kaydet ve print'i geri yükle
+    # Save log and restore print
     try:
-        console.print(f"📄 Log kaydedildi: {log_path}")
+        console.print(f"📄 Log saved: {log_path}")
         with open(log_path, "w", encoding="utf-8") as f:
             f.write(console.export_text())
     finally:
