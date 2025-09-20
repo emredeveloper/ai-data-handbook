@@ -135,8 +135,8 @@ Bu model, OpenAI'nin Whisper Small modelinin Türkçe konuşma tanıma için fin
 - **Language**: Turkish (tr)
 - **Task**: Automatic Speech Recognition
 - **Dataset**: Khan Academy Turkish Dataset
-- **Fine-tuning**: 100 steps, 5000 samples, CPU optimized
-- **Training Steps**: 100
+- **Fine-tuning**: 500 steps, 5000 samples, GPU optimized with SpecAugment
+- **Training Steps**: 500 (checkpoint-400 selected for best WER)
 - **Dataset Size**: 5000 train + 100 test samples
 
 ## Kullanım
@@ -195,13 +195,68 @@ Bu model, Türkçe konuşma tanıma için fine-tune edilmiştir.
     except Exception as e:
         console.print(f"[yellow]⚠️ Repository zaten mevcut veya oluşturulamadı: {e}[/yellow]")
     
-    # Model'i yükle
-    console.print("\n[bold blue]🤖 Model yükleniyor...[/bold blue]")
-    console.print("[yellow]💡 En son checkpoint (best model) yükleniyor...[/yellow]")
+    # Windows dosya kilitleme sorunlarını önlemek için geçici kopyalama
+    console.print("\n[bold blue]📁 Windows dosya kilitleme sorunları için model kopyalanıyor...[/bold blue]")
+    import shutil
+    import tempfile
+    import time
+    
+    temp_model_path = None
     try:
-        # Model ve processor'ı yükle - en son checkpoint
-        model = WhisperForConditionalGeneration.from_pretrained(model_path)
-        processor = WhisperProcessor.from_pretrained(model_path)
+        # Geçici dizin oluştur
+        temp_model_path = tempfile.mkdtemp(prefix="whisper_upload_")
+        console.print(f"[blue]📂 Geçici dizin: {temp_model_path}[/blue]")
+        
+        # Gerekli dosyaları kopyala (checkpoint dosyalarını hariç tut)
+        essential_files = [
+            "config.json", "generation_config.json", "model.safetensors", 
+            "tokenizer.json", "tokenizer_config.json", "vocab.json", 
+            "merges.txt", "normalizer.json", "added_tokens.json",
+            "special_tokens_map.json", "preprocessor_config.json", "README.md"
+        ]
+        
+        for file in essential_files:
+            src = os.path.join(model_path, file)
+            dst = os.path.join(temp_model_path, file)
+            if os.path.exists(src):
+                shutil.copy2(src, dst)
+                console.print(f"[green]✅ Copied: {file}[/green]")
+            else:
+                console.print(f"[yellow]⚠️ Missing: {file}[/yellow]")
+        
+        # PyTorch model dosyasını kontrol et ve gerekirse SafeTensors'dan oluştur
+        pytorch_model_src = os.path.join(model_path, "pytorch_model.bin")
+        safetensors_src = os.path.join(model_path, "model.safetensors")
+        pytorch_model_dst = os.path.join(temp_model_path, "pytorch_model.bin")
+        
+        if os.path.exists(pytorch_model_src):
+            console.print("[blue]📦 PyTorch model dosyası mevcut, kopyalanıyor...[/blue]")
+            shutil.copy2(pytorch_model_src, pytorch_model_dst)
+            console.print("[green]✅ PyTorch model kopyalandı[/green]")
+        elif os.path.exists(safetensors_src):
+            console.print("[blue]🔄 SafeTensors'dan PyTorch formatına çeviriliyor...[/blue]")
+            try:
+                from safetensors.torch import load_file
+                import torch
+                
+                # SafeTensors yükle ve PyTorch formatında kaydet
+                state_dict = load_file(safetensors_src)
+                torch.save(state_dict, pytorch_model_dst)
+                console.print("[green]✅ SafeTensors → PyTorch dönüşümü tamamlandı[/green]")
+            except Exception as conv_e:
+                console.print(f"[yellow]⚠️ Dönüşüm hatası: {conv_e}[/yellow]")
+                console.print("[blue]SafeTensors dosyasını kullanmaya devam ediliyor...[/blue]")
+                shutil.copy2(safetensors_src, os.path.join(temp_model_path, "model.safetensors"))
+        
+        console.print("[green]✅ Model dosyaları geçici dizine kopyalandı![/green]")
+        
+        # Kısa bekleme - dosya işlemlerinin tamamlanması için
+        time.sleep(2)
+        
+        # Model'i geçici dizinden yükle
+        console.print("\n[bold blue]🤖 Model geçici dizinden yükleniyor...[/bold blue]")
+        model = WhisperForConditionalGeneration.from_pretrained(temp_model_path)
+        processor = WhisperProcessor.from_pretrained(temp_model_path)
         
         console.print("[green]✅ Model yüklendi![/green]")
         
@@ -217,28 +272,67 @@ Bu model, Türkçe konuşma tanıma için fine-tune edilmiştir.
         ) as progress:
             task = progress.add_task("Model yükleniyor...", total=None)
             
-            # Model'i push et (en son checkpoint)
-            model.push_to_hub(
-                model_name,
-                commit_message="Add fine-tuned Turkish Whisper model (100 steps, best checkpoint)",
-                private=False
-            )
-            
-            # Processor'ı push et
-            processor.push_to_hub(
-                model_name,
-                commit_message="Add processor for Turkish Whisper model (100 steps)",
-                private=False
-            )
-            
-            progress.update(task, description="[green]✅ Model başarıyla yüklendi!")
+            try:
+                # Model'i push et
+                model.push_to_hub(
+                    model_name,
+                    commit_message="Add fine-tuned Turkish Whisper model (500 steps, optimized for Turkish)",
+                    private=False,
+                    safe_serialization=True,  # SafeTensors kullan
+                    max_shard_size="1GB"  # Büyük dosyalar için parçalama
+                )
+                
+                # Processor'ı push et
+                processor.push_to_hub(
+                    model_name,
+                    commit_message="Add processor for Turkish Whisper model",
+                    private=False
+                )
+                
+                progress.update(task, description="[green]✅ Model başarıyla yüklendi!")
+                
+            except Exception as upload_e:
+                console.print(f"[red]❌ Upload hatası: {upload_e}[/red]")
+                
+                # Alternatif yöntem: Dosyaları tek tek yükle
+                console.print("[yellow]💡 Alternatif yöntem deneniyor...[/yellow]")
+                from huggingface_hub import HfApi
+                
+                api = HfApi()
+                
+                # Dosyaları tek tek yükle
+                for file in essential_files:
+                    file_path = os.path.join(temp_model_path, file)
+                    if os.path.exists(file_path):
+                        try:
+                            api.upload_file(
+                                path_or_fileobj=file_path,
+                                path_in_repo=file,
+                                repo_id=model_name,
+                                repo_type="model"
+                            )
+                            console.print(f"[green]✅ Uploaded: {file}[/green]")
+                            time.sleep(1)  # Rate limiting için bekleme
+                        except Exception as file_e:
+                            console.print(f"[red]❌ {file} upload failed: {file_e}[/red]")
+                
+                raise upload_e
         
         console.print("[green]✅ Model başarıyla Hugging Face Hub'a yüklendi![/green]")
         
     except Exception as e:
         console.print(f"[red]❌ Model yükleme hatası: {e}[/red]")
-        console.print("[yellow]💡 Lütfen internet bağlantınızı ve token'ınızı kontrol edin.[/yellow]")
+        console.print("[yellow]💡 Windows dosya kilitleme sorunu olabilir. Lütfen tüm Python süreçlerini kapatıp tekrar deneyin.[/yellow]")
         return
+        
+    finally:
+        # Geçici dizini temizle
+        if temp_model_path and os.path.exists(temp_model_path):
+            try:
+                shutil.rmtree(temp_model_path)
+                console.print(f"[blue]🧹 Geçici dizin temizlendi: {temp_model_path}[/blue]")
+            except Exception as cleanup_e:
+                console.print(f"[yellow]⚠️ Geçici dizin temizleme hatası: {cleanup_e}[/yellow]")
     
     # Başarı mesajı
     success_table = Table(title="Model Başarıyla Yüklendi!")

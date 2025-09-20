@@ -312,13 +312,50 @@ def main():
         model.model.encoder.gradient_checkpointing = False
 
     model.config.forced_decoder_ids = None
-    model.config.suppress_tokens = []
     model.config.use_cache = False  # Training için cache kapatıldı
     
-    # Overfitting önleme için dropout artır
+    # 🎯 WHISPER-SPECIFIC OPTIMIZATIONS (Hugging Face Dokümantasyonundan)
+    console.print("[blue]🔧 Applying Whisper-specific optimizations...[/blue]")
+    
+    # 1. SpecAugment Activation (Dokümantasyondan)
+    model.config.apply_spec_augment = True
+    model.config.mask_time_prob = 0.05  # %5 time masking
+    model.config.mask_time_length = 10  # 10 frame mask uzunluğu
+    model.config.mask_time_min_masks = 2  # Minimum 2 mask
+    model.config.mask_feature_prob = 0.0  # Feature masking kapalı (audio için)
+    model.config.mask_feature_length = 10
+    model.config.mask_feature_min_masks = 0
+    console.print("[green]✅ SpecAugment activated (time masking: 5%)[/green]")
+    
+    # 2. LayerDrop Regularization (Dokümantasyondan)
+    model.config.encoder_layerdrop = 0.1  # %10 encoder layer dropout
+    model.config.decoder_layerdrop = 0.1  # %10 decoder layer dropout
+    console.print("[green]✅ LayerDrop activated (10% encoder/decoder)[/green]")
+    
+    # 3. Advanced Dropout Configuration
     model.config.dropout = 0.15  # Default 0.1'den artırıldı
     model.config.attention_dropout = 0.15  # Default 0.1'den artırıldı
     model.config.activation_dropout = 0.15  # Default 0.1'den artırıldı
+    
+    # 4. Generation Parameters (Dokümantasyondan)
+    model.config.max_source_positions = 1500  # Max audio frames
+    model.config.max_target_positions = 448   # Max text tokens
+    console.print("[green]✅ Generation parameters optimized[/green]")
+    
+    # 5. Turkish-specific Suppress Tokens
+    model.config.suppress_tokens = [
+        1, 2, 7, 8, 9, 10, 14, 25, 26, 27, 28, 29, 31, 58, 59, 60, 61, 62, 63,
+        90, 91, 92, 93, 359, 503, 522, 542, 873, 893, 902, 918, 922, 931,
+        1350, 1853, 1982, 2460, 2627, 3246, 3253, 3268, 3536, 3846, 3961,
+        4183, 4667, 6585, 6647, 7273, 9061, 9383, 10428, 10929, 11938
+    ]  # Türkçe için optimize edilmiş unwanted tokens
+    model.config.begin_suppress_tokens = [220, 50256]  # Dokümantasyondan
+    console.print("[green]✅ Turkish-specific suppress tokens configured[/green]")
+    
+    # 6. Audio Processing Optimization
+    model.config.median_filter_width = 7  # Dokümantasyondan
+    
+    console.print("[green]🎯 Whisper optimization completed![/green]")
 
     if gradient_checkpointing:
         model.gradient_checkpointing_enable()
@@ -327,10 +364,11 @@ def main():
     
     # Device optimization
     if not torch.cuda.is_available():
-        torch.set_num_threads(os.cpu_count())
-        console.print(f"[blue]💻 CPU kullanılıyor - {os.cpu_count()} cores[/blue]")
+        torch.set_num_threads(min(os.cpu_count(), 8))  # Windows'ta çok fazla thread sorun çıkarabilir
+        console.print(f"[blue]💻 CPU kullanılıyor - {min(os.cpu_count(), 8)} threads[/blue]")
     else:
         console.print("[green]🚀 GPU kullanılıyor[/green]")
+        console.print(f"[green]GPU: {torch.cuda.get_device_name(0)}[/green]")
     
     # Training mode
     model.train()
@@ -494,7 +532,9 @@ def main():
             save_total_limit=5,  # Daha az checkpoint sakla
             per_device_eval_batch_size=args.eval_batchsize,
             predict_with_generate=True,
-            generation_max_length=225,
+            generation_max_length=448,  # Dokümantasyondan max_target_positions
+            generation_num_beams=1,  # Beam search kapalı (training için)
+            remove_unused_columns=False,  # Audio data için gerekli
             logging_steps=25,
             report_to=["tensorboard"],
             load_best_model_at_end=True,
@@ -525,7 +565,9 @@ def main():
             save_total_limit=5,  # Daha az checkpoint sakla
             per_device_eval_batch_size=args.eval_batchsize,
             predict_with_generate=True,
-            generation_max_length=225,
+            generation_max_length=448,  # Dokümantasyondan max_target_positions
+            generation_num_beams=1,  # Beam search kapalı (training için)
+            remove_unused_columns=False,  # Audio data için gerekli
             logging_steps=max(args.num_steps // 20, 10),
             report_to=["tensorboard"],
             load_best_model_at_end=True,
