@@ -1,25 +1,26 @@
 """
-Whisper Small Fine-tuning Script for Turkish
-Fine-tunes the Whisper model using the Khan Academy Turkish Dataset
+Whisper Fine-tuning Script for Turkish
+Fine-tunes the Whisper model using various Turkish datasets with flexible configuration
 """
 
 import os
 import torch
-import torchaudio
-from datasets import load_dataset, DatasetDict, Audio
-from transformers import (
-    WhisperProcessor,
-    WhisperForConditionalGeneration,
-    Seq2SeqTrainingArguments,
-    Seq2SeqTrainer,
-    WhisperTokenizer,
-    WhisperFeatureExtractor
-)
-from dataclasses import dataclass
-from typing import Any, Dict, List, Union
+import argparse
 import evaluate
 import numpy as np
-from huggingface_hub import login
+from dataclasses import dataclass
+from typing import Any, Dict, List, Union
+from datasets import DatasetDict, Audio, load_dataset, concatenate_datasets
+from transformers.models.whisper.english_normalizer import BasicTextNormalizer
+from transformers import (
+    WhisperFeatureExtractor, 
+    WhisperTokenizer, 
+    WhisperProcessor, 
+    WhisperForConditionalGeneration, 
+    Seq2SeqTrainingArguments, 
+    Seq2SeqTrainer,
+    EarlyStoppingCallback
+)
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -29,221 +30,396 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+###############################     DATA COLLATOR DEFINITION     ########################
+
+@dataclass
+class DataCollatorSpeechSeq2SeqWithPadding:
+    processor: Any
+
+    def __call__(self, features: List[Dict[str, Union[List[int], torch.Tensor]]]) -> Dict[str, torch.Tensor]:
+        # split inputs and labels since they have to be of different lengths and need different padding methods
+        # first treat the audio inputs by simply returning torch tensors
+        input_features = [{"input_features": feature["input_features"]} for feature in features]
+        batch = self.processor.feature_extractor.pad(input_features, return_tensors="pt")
+
+        # get the tokenized label sequences
+        label_features = [{"input_ids": feature["labels"]} for feature in features]
+        # pad the labels to max length
+        labels_batch = self.processor.tokenizer.pad(label_features, return_tensors="pt")
+
+        # replace padding with -100 to ignore loss correctly
+        labels = labels_batch["input_ids"].masked_fill(labels_batch.attention_mask.ne(1), -100)
+
+        # if bos token is appended in previous tokenization step,
+        # cut bos token here as it's append later anyways
+        if (labels[:, 0] == self.processor.tokenizer.bos_token_id).all().cpu().item():
+            labels = labels[:, 1:]
+
+        batch["labels"] = labels
+
+        return batch
+
+#######################     ARGUMENT PARSING        #########################
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(description='Fine-tuning script for Whisper Models of various sizes.')
+    parser.add_argument(
+        '--model_name', 
+        type=str, 
+        required=False, 
+        default='openai/whisper-small', 
+        help='Huggingface model name to fine-tune. Eg: openai/whisper-small'
+    )
+    parser.add_argument(
+        '--language', 
+        type=str, 
+        required=False, 
+        default='turkish', 
+        help='Language the model is being adapted to in lowercase.'
+    )
+    parser.add_argument(
+        '--sampling_rate', 
+        type=int, 
+        required=False, 
+        default=16000, 
+        help='Sampling rate of audios.'
+    )
+    parser.add_argument(
+        '--num_proc', 
+        type=int, 
+        required=False, 
+        default=1, 
+        help='Number of parallel jobs to run. Helps parallelize the dataset prep stage.'
+    )
+    parser.add_argument(
+        '--train_strategy', 
+        type=str, 
+        required=False, 
+        default='steps', 
+        help='Training strategy. Choose between steps and epoch.'
+    )
+    parser.add_argument(
+        '--learning_rate', 
+        type=float, 
+        required=False, 
+        default=5e-6, 
+        help='Learning rate for the fine-tuning process. Lower rate to prevent overfitting.'
+    )
+    parser.add_argument(
+        '--warmup', 
+        type=int, 
+        required=False, 
+        default=50, 
+        help='Number of warmup steps. Increased for gradual learning rate increase.'
+    )
+    parser.add_argument(
+        '--train_batchsize', 
+        type=int, 
+        required=False, 
+        default=1, 
+        help='Batch size during the training phase.'
+    )
+    parser.add_argument(
+        '--eval_batchsize', 
+        type=int, 
+        required=False, 
+        default=2, 
+        help='Batch size during the evaluation phase.'
+    )
+    parser.add_argument(
+        '--num_epochs', 
+        type=int, 
+        required=False, 
+        default=3, 
+        help='Number of epochs to train for.'
+    )
+    parser.add_argument(
+        '--num_steps', 
+        type=int, 
+        required=False, 
+        default=500, 
+        help='Number of steps to train for. Increased for better convergence.'
+    )
+    parser.add_argument(
+        '--resume_from_ckpt', 
+        type=str, 
+        required=False, 
+        default=None, 
+        help='Path to a trained checkpoint to resume training from.'
+    )
+    parser.add_argument(
+        '--output_dir', 
+        type=str, 
+        required=False, 
+        default='./whisper-small-turkish', 
+        help='Output directory for the checkpoints generated.'
+    )
+    parser.add_argument(
+        '--train_datasets', 
+        type=str, 
+        nargs='+', 
+        required=False, 
+        default=['ysdede/khanacademy-turkish'], 
+        help='List of datasets to be used for training.'
+    )
+    parser.add_argument(
+        '--train_dataset_configs', 
+        type=str, 
+        nargs='+', 
+        required=False, 
+        default=['default'], 
+        help="List of training dataset configs. Eg. 'hi' for the Hindi part of Common Voice",
+    )
+    parser.add_argument(
+        '--train_dataset_splits', 
+        type=str, 
+        nargs='+', 
+        required=False, 
+        default=['train'], 
+        help="List of training dataset splits. Eg. 'train' for the train split of Common Voice",
+    )
+    parser.add_argument(
+        '--train_dataset_text_columns', 
+        type=str, 
+        nargs='+', 
+        required=False, 
+        default=['transcription'], 
+        help="Text column name of each training dataset. Eg. 'sentence' for Common Voice",
+    )
+    parser.add_argument(
+        '--eval_datasets', 
+        type=str, 
+        nargs='+', 
+        required=False, 
+        default=['ysdede/khanacademy-turkish'], 
+        help='List of datasets to be used for evaluation.'
+    )
+    parser.add_argument(
+        '--eval_dataset_configs', 
+        type=str, 
+        nargs='+', 
+        required=False, 
+        default=['default'], 
+        help="List of evaluation dataset configs. Eg. 'hi_in' for the Hindi part of Google Fleurs",
+    )
+    parser.add_argument(
+        '--eval_dataset_splits', 
+        type=str, 
+        nargs='+', 
+        required=False, 
+        default=['test'], 
+        help="List of evaluation dataset splits. Using 'test' for unseen data evaluation.",
+    )
+    parser.add_argument(
+        '--eval_dataset_text_columns', 
+        type=str, 
+        nargs='+', 
+        required=False, 
+        default=['transcription'], 
+        help="Text column name of each evaluation dataset. Eg. 'transcription' for Google Fleurs",
+    )
+    parser.add_argument(
+        '--max_train_samples', 
+        type=int, 
+        required=False, 
+        default=5000, 
+        help='Maximum number of training samples to use.'
+    )
+    parser.add_argument(
+        '--max_eval_samples', 
+        type=int, 
+        required=False, 
+        default=100, 
+        help='Maximum number of evaluation samples to use.'
+    )
+
+    return parser.parse_args()
+
+def validate_arguments(args):
+    if args.train_strategy not in ['steps', 'epoch']:
+        raise ValueError('The train strategy should be either steps and epoch.')
+
+    if len(args.train_datasets) == 0:
+        raise ValueError('No train dataset has been passed')
+    if len(args.eval_datasets) == 0:
+        raise ValueError('No evaluation dataset has been passed')
+
+    # Validation for list arguments
+    list_args = [
+        ('train_datasets', 'train_dataset_configs'),
+        ('train_datasets', 'train_dataset_splits'),
+        ('train_datasets', 'train_dataset_text_columns'),
+        ('eval_datasets', 'eval_dataset_configs'),
+        ('eval_datasets', 'eval_dataset_splits'),
+        ('eval_datasets', 'eval_dataset_text_columns')
+    ]
+    
+    for arg1, arg2 in list_args:
+        if len(getattr(args, arg1)) != len(getattr(args, arg2)):
+            raise ValueError(f"Ensure that the number of entries in {arg1} equals {arg2}. "
+                           f"Received {len(getattr(args, arg1))} for {arg1} and {len(getattr(args, arg2))} for {arg2}.")
+
 def main():
+    # Parse arguments
+    args = parse_arguments()
+    validate_arguments(args)
+    
     # Initialize Rich console
     console = Console()
     
     # Welcome panel
     console.print(Panel.fit(
         "[bold cyan]🎯 Whisper Turkish Fine-tuning[/bold cyan]\n"
-        "[dim]Fine-tuning Whisper Small for Turkish speech recognition[/dim]",
+        "[dim]Fine-tuning Whisper model for Turkish speech recognition[/dim]",
         border_style="cyan"
     ))
     
-    # Skipped Hugging Face Hub login (token will be requested if needed)
-    console.print("[yellow]⚠️[/yellow] Skipping login to Hugging Face Hub...")
-
-    # Dataset loading
-    console.print("\n[bold blue]📥 Loading Khan Academy Turkish dataset...[/bold blue]")
-    try:
-        # Load dataset
-        dataset = load_dataset("ysdede/khanacademy-turkish")
-        
-        # Inspect dataset structure
-        console.print("[green]✅[/green] Dataset loaded successfully!")
-        console.print("[dim]Dataset structure:[/dim]")
-        console.print(dataset)
-        
-        # Create train/test split if missing
-        if "train" not in dataset:
-            # Split dataset into 80% train and 20% test
-            dataset = dataset["train"].train_test_split(test_size=0.2, seed=42)
-            dataset = DatasetDict({
-                "train": dataset["train"],
-                "test": dataset["test"]
-            })
-        
-        # Select only audio and transcription columns
-        if "audio" in dataset["train"].column_names and "transcription" in dataset["train"].column_names:
-            dataset = dataset.select_columns(["audio", "transcription"])
-            # rename transcription column to text
-            dataset = dataset.rename_column("transcription", "text")
-        elif "audio" in dataset["train"].column_names and "text" in dataset["train"].column_names:
-            dataset = dataset.select_columns(["audio", "text"])
-        elif "sentence" in dataset["train"].column_names:
-            dataset = dataset.select_columns(["audio", "sentence"])
-            # rename sentence column to text
-            dataset = dataset.rename_column("sentence", "text")
-        else:
-            print("Available columns:", dataset["train"].column_names)
-            raise ValueError("Could not find 'audio' and 'transcription' columns in dataset")
-            
-        # Create dataset info table
-        table = Table(title="Dataset Information")
-        table.add_column("Split", style="cyan")
-        table.add_column("Samples", justify="right", style="green")
-        table.add_row("Train", str(len(dataset['train'])))
-        table.add_row("Test", str(len(dataset['test'])))
-        console.print(table)
-        
-        # Train with exactly 5000 training and 100 test samples
-        desired_train = 5000
-        desired_test = 100
-        console.print(f"\n[bold yellow]📊 Dataset 5K train, 100 test olarak sınırlanıyor...[/bold yellow]")
-        dataset["train"] = dataset["train"].select(range(min(desired_train, len(dataset["train"]))))
-        dataset["test"] = dataset["test"].select(range(min(desired_test, len(dataset["test"]))))
-        
-        # Updated dataset info
-        table = Table(title="Final Dataset")
-        table.add_column("Split", style="cyan")
-        table.add_column("Samples", justify="right", style="green")
-        table.add_row("Train", str(len(dataset['train'])))
-        table.add_row("Test", str(len(dataset['test'])))
-        console.print(table)
-        
-    except Exception as e:
-        console.print(f"[red]❌ Dataset load error: {e}[/red]")
-        console.print("[yellow]Trying an alternative dataset...[/yellow]")
-        # Fallback - minimal dataset
-        raise Exception("Dataset could not be loaded")
-
-    # Keep audio as is - will be handled in preprocessing
-    console.print("\n[bold blue]🎵 Audio will be processed during preprocessing...[/bold blue]")
-
-    # Cast audio column to 16kHz (prevents AudioDecoder/sampling_rate issues)
-    try:
-        console.print("[blue]📡 Casting audio column to 16kHz (datasets.Audio)...[/blue]")
-        dataset = dataset.cast_column("audio", Audio(sampling_rate=16000))
-        console.print("[green]✅ Audio casting successful![/green]")
-    except Exception as e:
-        console.print(f"[yellow]⚠️ Audio cast failed, continuing: {e}[/yellow]")
-
-    # Load processor (for Turkish)
-    console.print("\n[bold blue]🔧 Loading Whisper processor...[/bold blue]")
-    processor = WhisperProcessor.from_pretrained(
-        "openai/whisper-small", 
-        language="turkish", 
-        task="transcribe"
-    )
-    console.print("[green]✅ Processor loaded![/green]")
-
-    # Load model
-    console.print("[bold blue]🤖 Loading Whisper model...[/bold blue]")
-    model = WhisperForConditionalGeneration.from_pretrained("openai/whisper-small")
-    console.print("[green]✅ Model loaded![/green]")
-
-    # Model configuration for CPU
-    model.config.use_cache = False
-    model.config.forced_decoder_ids = None  # clear forced decoder IDs
+    # Print arguments
+    console.print('\n[bold blue]📋 Configuration:[/bold blue]')
+    config_table = Table()
+    config_table.add_column("Parameter", style="cyan")
+    config_table.add_column("Value", style="green")
+    for key, value in vars(args).items():
+        config_table.add_row(str(key), str(value))
+    console.print(config_table)
     
-    # CPU için model'i optimize et
+    # Global configuration
+    gradient_checkpointing = False  # GPU'da gradient checkpointing kapatıldı
+    freeze_feature_encoder = False
+    freeze_encoder = False
+    do_normalize_eval = True
+    do_lower_case = False
+    do_remove_punctuation = False
+    normalizer = BasicTextNormalizer()
+
+    #############################       MODEL LOADING       #####################################
+
+    console.print("\n[bold blue]🔧 Loading model components...[/bold blue]")
+    
+    feature_extractor = WhisperFeatureExtractor.from_pretrained(args.model_name)
+    tokenizer = WhisperTokenizer.from_pretrained(args.model_name, language=args.language, task="transcribe")
+    processor = WhisperProcessor.from_pretrained(args.model_name, language=args.language, task="transcribe")
+    model = WhisperForConditionalGeneration.from_pretrained(args.model_name)
+
+    if model.config.decoder_start_token_id is None:
+        raise ValueError("Make sure that config.decoder_start_token_id is correctly defined")
+
+    if freeze_feature_encoder:
+        model.freeze_feature_encoder()
+
+    if freeze_encoder:
+        model.freeze_encoder()
+        model.model.encoder.gradient_checkpointing = False
+
+    model.config.forced_decoder_ids = None
+    model.config.suppress_tokens = []
+    model.config.use_cache = False  # Training için cache kapatıldı
+    
+    # Overfitting önleme için dropout artır
+    model.config.dropout = 0.15  # Default 0.1'den artırıldı
+    model.config.attention_dropout = 0.15  # Default 0.1'den artırıldı
+    model.config.activation_dropout = 0.15  # Default 0.1'den artırıldı
+
+    if gradient_checkpointing:
+        model.gradient_checkpointing_enable()
+    else:
+        model.gradient_checkpointing_disable()
+    
+    # Device optimization
     if not torch.cuda.is_available():
-        model.eval()  # CPU'da eval mode daha hızlı
-        torch.set_num_threads(os.cpu_count())  # Tüm CPU core'ları kullan
+        torch.set_num_threads(os.cpu_count())
+        console.print(f"[blue]💻 CPU kullanılıyor - {os.cpu_count()} cores[/blue]")
+    else:
+        console.print("[green]🚀 GPU kullanılıyor[/green]")
+    
+    # Training mode
+    model.train()
 
-    # Enable cache for generation
-    from functools import partial
-    model.generate = partial(
-        model.generate, 
-        language="turkish", 
-        task="transcribe", 
-        use_cache=True
-    )
+    console.print("[green]✅ Model components loaded![/green]")
 
-    # Data preprocessing function - simple dict-based flow after cast
-    def prepare_dataset(batch):
-        try:
-            # Process audio
-            audio = batch["audio"]
+    ############################        DATASET LOADING AND PREP        ##########################
 
-            # Expected: dict {array, sampling_rate}. If not, apply soft conversion
-            if isinstance(audio, dict):
-                audio_array = audio.get("array")
-                sampling_rate = audio.get("sampling_rate", 16000)
-            else:
-                audio_array = getattr(audio, "array", audio)
-                sampling_rate = getattr(audio, "sampling_rate", 16000)
-
-            # sampling_rate safety
-            try:
-                sampling_rate = int(sampling_rate) if sampling_rate else 16000
-            except Exception:
-                sampling_rate = 16000
-
-            # Convert to numpy
-            if not isinstance(audio_array, np.ndarray):
-                if hasattr(audio_array, "numpy"):
-                    audio_array = audio_array.numpy()
-                else:
-                    audio_array = np.asarray(audio_array, dtype=object)
-
-            # Type and safety checks
-            # Flatten object/jagged arrays
-            if audio_array.dtype == object:
+    def load_all_datasets(split):    
+        combined_dataset = []
+        if split == 'train':
+            for i, ds in enumerate(args.train_datasets):
+                console.print(f"[blue]📥 Loading train dataset: {ds}[/blue]")
+                dataset = load_dataset(ds, args.train_dataset_configs[i], split=args.train_dataset_splits[i])
+                dataset = dataset.cast_column("audio", Audio(args.sampling_rate))
+                if args.train_dataset_text_columns[i] != "sentence":
+                    dataset = dataset.rename_column(args.train_dataset_text_columns[i], "sentence")
+                dataset = dataset.remove_columns(set(dataset.features.keys()) - set(["audio", "sentence"]))
+                combined_dataset.append(dataset)
+        elif split == 'eval':
+            for i, ds in enumerate(args.eval_datasets):
+                console.print(f"[blue]📥 Loading eval dataset: {ds}[/blue]")
                 try:
-                    parts = []
-                    for x in audio_array:
-                        if x is None:
-                            continue
-                        x_arr = np.asarray(x, dtype=np.float32).reshape(-1)
-                        parts.append(x_arr)
-                    audio_array = np.concatenate(parts) if parts else np.zeros(16000, dtype=np.float32)
-                except Exception:
-                    audio_array = np.zeros(16000, dtype=np.float32)
-            else:
-                audio_array = audio_array.astype(np.float32, copy=False)
-
-            # Shape adjustment
-            if audio_array.ndim >= 2:
-                # (C, N) or (N, C): if C=2, average channels
-                if 2 in audio_array.shape:
-                    axis = int(np.argmin(audio_array.shape)) if audio_array.ndim == 2 else -1
-                    audio_array = np.mean(audio_array, axis=axis)
-                else:
-                    audio_array = audio_array.reshape(-1)
-            if audio_array.size == 0 or np.isnan(audio_array).any():
-                audio_array = np.zeros(16000, dtype=np.float32)
-                sampling_rate = 16000
-
-            # Amplitude normalization (if needed)
-            max_abs = float(np.max(np.abs(audio_array))) if audio_array.size else 0.0
-            if max_abs > 1.0:
-                audio_array = audio_array / max_abs
-            
-            # Process text
-            batch["input_features"] = processor(
-                audio_array, 
-                sampling_rate=sampling_rate
-            ).input_features[0]
-            
-            # Tokenize text with better settings
-            batch["labels"] = processor.tokenizer(
-                batch["text"], 
-                max_length=225, 
-                padding="max_length", 
-                truncation=True,
-                return_tensors="pt"
-            ).input_ids.squeeze(0)  # Remove batch dimension
-            
-        except Exception as e:
-            print(f"Audio preprocessing error: {e}")
-            print("❌ Skipping this sample, using dummy data...")
-            # On error, create fully dummy data
-            batch["input_features"] = processor(
-                np.zeros(16000, dtype=np.float32), 
-                sampling_rate=16000
-            ).input_features[0]
-            batch["labels"] = processor.tokenizer(
-                "Dummy text for failed audio processing.", 
-                max_length=225, 
-                padding="max_length", 
-                truncation=True,
-                return_tensors="pt"
-            ).input_ids.squeeze(0)
+                    # İlk olarak test split'ini dene
+                    dataset = load_dataset(ds, args.eval_dataset_configs[i], split=args.eval_dataset_splits[i])
+                    console.print(f"[green]✅ Test split loaded for evaluation[/green]")
+                except:
+                    # Test split yoksa train split'in son %10'unu kullan
+                    console.print(f"[yellow]⚠️ Test split not found, using validation subset from train[/yellow]")
+                    full_dataset = load_dataset(ds, args.eval_dataset_configs[i], split="train")
+                    # Train'in son %10'unu validation olarak kullan
+                    val_size = max(100, len(full_dataset) // 10)
+                    start_idx = len(full_dataset) - val_size
+                    dataset = full_dataset.select(range(start_idx, len(full_dataset)))
+                
+                dataset = dataset.cast_column("audio", Audio(args.sampling_rate))
+                if args.eval_dataset_text_columns[i] != "sentence":
+                    dataset = dataset.rename_column(args.eval_dataset_text_columns[i], "sentence")
+                dataset = dataset.remove_columns(set(dataset.features.keys()) - set(["audio", "sentence"]))
+                combined_dataset.append(dataset)
         
+        ds_to_return = concatenate_datasets(combined_dataset)
+        ds_to_return = ds_to_return.shuffle(seed=22)
+        return ds_to_return
+
+    console.print('\n[bold blue]📊 DATASET PREPARATION IN PROGRESS...[/bold blue]')
+    raw_dataset = DatasetDict()
+    raw_dataset["train"] = load_all_datasets('train')
+    raw_dataset["eval"] = load_all_datasets('eval')
+    
+    # Limit dataset sizes
+    console.print(f"[yellow]📊 Limiting train to {args.max_train_samples} and eval to {args.max_eval_samples} samples...[/yellow]")
+    raw_dataset["train"] = raw_dataset["train"].select(range(min(args.max_train_samples, len(raw_dataset["train"]))))
+    raw_dataset["eval"] = raw_dataset["eval"].select(range(min(args.max_eval_samples, len(raw_dataset["eval"]))))
+    
+    # Dataset info
+    table = Table(title="Dataset Information")
+    table.add_column("Split", style="cyan")
+    table.add_column("Samples", justify="right", style="green")
+    table.add_row("Train", str(len(raw_dataset['train'])))
+    table.add_row("Eval", str(len(raw_dataset['eval'])))
+    console.print(table)
+
+    def prepare_dataset(batch):
+        # load and (possibly) resample audio data to 16kHz
+        audio = batch["audio"]
+
+        # compute log-Mel input features from input audio array 
+        batch["input_features"] = processor.feature_extractor(audio["array"], sampling_rate=audio["sampling_rate"]).input_features[0]
+        # compute input length of audio sample in seconds
+        batch["input_length"] = len(audio["array"]) / audio["sampling_rate"]
+        
+        # optional pre-processing steps
+        transcription = batch["sentence"]
+        if do_lower_case:
+            transcription = transcription.lower()
+        if do_remove_punctuation:
+            transcription = normalizer(transcription).strip()
+        
+        # encode target text to label ids
+        batch["labels"] = processor.tokenizer(transcription).input_ids
         return batch
 
-    # Prepare dataset
+    max_label_length = model.config.max_length
+    min_input_length = 0.0
+    max_input_length = 30.0
+    def is_in_length_range(length, labels):
+        return min_input_length < length < max_input_length and 0 < len(labels) < max_label_length
+
     console.print("\n[bold blue]⚙️ Preparing dataset...[/bold blue]")
     with Progress(
         SpinnerColumn(),
@@ -253,157 +429,180 @@ def main():
         console=console
     ) as progress:
         task = progress.add_task("Processing audio data...", total=None)
-        dataset = dataset.map(
-            prepare_dataset,
-            remove_columns=dataset["train"].column_names,
-            num_proc=1  # set to 1 on Windows to avoid multiprocessing issues
-        )
+        raw_dataset = raw_dataset.map(prepare_dataset, num_proc=args.num_proc)
+        progress.update(task, description="Filtering by length...")
+        raw_dataset = raw_dataset.filter(
+            is_in_length_range,
+            input_columns=["input_length", "labels"],
+            num_proc=args.num_proc,
+        ) 
         progress.update(task, description="[green]✅ Dataset prepared!")
     console.print("[green]✅ Dataset preparation completed![/green]")
 
-    # Data collator
-    @dataclass
-    class DataCollatorSpeechSeq2SeqWithPadding:
-        processor: Any
-
-        def __call__(self, features: List[Dict[str, Union[List[int], torch.Tensor]]]) -> Dict[str, torch.Tensor]:
-            # Stack input features
-            input_features = [{"input_features": feature["input_features"]} for feature in features]
-            batch = self.processor.feature_extractor.pad(input_features, return_tensors="pt")
-
-            # Stack labels
-            label_features = [{"input_ids": feature["labels"]} for feature in features]
-            labels_batch = self.processor.tokenizer.pad(label_features, return_tensors="pt")
-
-            # Replace padding tokens in labels with -100
-            labels = labels_batch["input_ids"].masked_fill(labels_batch.attention_mask.ne(1), -100)
-
-            # If all labels are -100, loss won't be computed
-            if (labels == -100).all():
-                labels[:, 0] = self.processor.tokenizer.eos_token_id
-
-            batch["labels"] = labels
-
-            return batch
+    ###############################     DATA COLLATOR AND METRIC DEFINITION     ########################
 
     data_collator = DataCollatorSpeechSeq2SeqWithPadding(processor=processor)
+    console.print("[green]✅ Data collator created![/green]")
 
-    # Evaluation metrics
     console.print("\n[bold blue]📊 Loading evaluation metrics...[/bold blue]")
-    wer_metric = evaluate.load("wer")
-    cer_metric = evaluate.load("cer")
+    metric = evaluate.load("wer")
     console.print("[green]✅ Metrics loaded![/green]")
 
     def compute_metrics(pred):
         pred_ids = pred.predictions
         label_ids = pred.label_ids
 
-        # Remove -100s
+        # replace -100 with the pad_token_id
         label_ids[label_ids == -100] = processor.tokenizer.pad_token_id
 
-        # Decode
-        pred_str = processor.batch_decode(pred_ids, skip_special_tokens=True)
-        label_str = processor.batch_decode(label_ids, skip_special_tokens=True)
+        # we do not want to group tokens when computing the metrics
+        pred_str = processor.tokenizer.batch_decode(pred_ids, skip_special_tokens=True)
+        label_str = processor.tokenizer.batch_decode(label_ids, skip_special_tokens=True)
 
-        # Compute WER
-        wer = wer_metric.compute(predictions=pred_str, references=label_str)
-        
-        # Compute CER
-        cer = cer_metric.compute(predictions=pred_str, references=label_str)
+        if do_normalize_eval:
+            pred_str = [normalizer(pred) for pred in pred_str]
+            label_str = [normalizer(label) for label in label_str]
 
-        return {"wer": wer, "cer": cer}
+        wer = 100 * metric.compute(predictions=pred_str, references=label_str)
+        return {"wer": wer}
 
-    # Training arguments
+    ###############################     TRAINING ARGS AND TRAINING      ############################
+
     console.print("\n[bold blue]⚙️ Setting up training configuration...[/bold blue]")
-    use_fp16 = False  # Force CPU usage
     
-    # CPU info
-    console.print("[blue]💻 CPU kullanılıyor (GPU devre dışı)[/blue]")
-    console.print(f"[green]🔧 CPU Cores: {os.cpu_count()}[/green]")
-    training_args = Seq2SeqTrainingArguments(
-        output_dir="./whisper-small-turkish",
-        per_device_train_batch_size=1,  # CPU için küçük batch size
-        gradient_accumulation_steps=8,  # Daha büyük effective batch size
-        learning_rate=1e-5,  # Daha düşük LR - daha stabil eğitim
-        lr_scheduler_type="cosine",  # Cosine scheduler - daha iyi convergence
-        warmup_steps=10,  # 100 adım için uygun warmup
-        max_steps=100,  # 100 adım - daha iyi performans için
-        gradient_checkpointing=False,
-        fp16=False,  # CPU'da fp16 kullanma
-        fp16_full_eval=False,
-        eval_strategy="steps",
-        per_device_eval_batch_size=2,  # CPU için küçük eval batch
-        predict_with_generate=True,
-        generation_max_length=225,
-        generation_num_beams=3,  # CPU için daha az beam
-        save_steps=25,  # 100 adımda 4 kez kaydet
-        eval_steps=25,  # 100 adımda 4 kez eval
-        logging_steps=5,  # Her 5 adımda log
-        report_to=["tensorboard"],
-        load_best_model_at_end=True,
-        metric_for_best_model="wer",
-        greater_is_better=False,
-        push_to_hub=False,
-        hub_strategy="checkpoint",
-        dataloader_num_workers=0,  # CPU için multiprocessing kapalı
-        dataloader_pin_memory=False,  # CPU için pin_memory kapalı
-        weight_decay=0.1,  # Daha güçlü regularization
-        adam_epsilon=1e-8,  # Adam optimizer epsilon
-        max_grad_norm=1.0,  # Gradient clipping
+    use_fp16 = torch.cuda.is_available()  # Use FP16 only if GPU is available
+    use_cpu = not torch.cuda.is_available()
+    
+    if use_cpu:
+        console.print("[blue]💻 CPU kullanılıyor[/blue]")
+        console.print(f"[green]🔧 CPU Cores: {os.cpu_count()}[/green]")
+    else:
+        console.print("[green]🚀 GPU kullanılıyor[/green]")
+
+    if args.train_strategy == 'epoch':
+        training_args = Seq2SeqTrainingArguments(
+            output_dir=args.output_dir,
+            per_device_train_batch_size=args.train_batchsize,
+            gradient_accumulation_steps=1,
+            learning_rate=args.learning_rate,
+            warmup_steps=args.warmup,
+            gradient_checkpointing=gradient_checkpointing,
+            fp16=use_fp16,
+            eval_strategy="epoch",
+            save_strategy="epoch",
+            num_train_epochs=args.num_epochs,
+            save_total_limit=5,  # Daha az checkpoint sakla
+            per_device_eval_batch_size=args.eval_batchsize,
+            predict_with_generate=True,
+            generation_max_length=225,
+            logging_steps=25,
+            report_to=["tensorboard"],
+            load_best_model_at_end=True,
+            metric_for_best_model="wer",
+            greater_is_better=False,
+            # Overfitting önleme parametreleri
+            weight_decay=0.01,  # L2 regularization
+            lr_scheduler_type="cosine",  # Cosine learning rate decay
+            dataloader_num_workers=0,  # Windows uyumluluğu için 0
+            dataloader_pin_memory=False,  # Windows uyumluluğu için False
+            resume_from_checkpoint=args.resume_from_ckpt,
+        )
+
+    elif args.train_strategy == 'steps':
+        training_args = Seq2SeqTrainingArguments(
+            output_dir=args.output_dir,
+            per_device_train_batch_size=args.train_batchsize,
+            gradient_accumulation_steps=8 if use_cpu else 1,
+            learning_rate=args.learning_rate,
+            warmup_steps=args.warmup,
+            gradient_checkpointing=gradient_checkpointing,
+            fp16=use_fp16,
+            eval_strategy="steps",
+            eval_steps=max(args.num_steps // 10, 50),  # Daha sık evaluation
+            save_strategy="steps",
+            save_steps=max(args.num_steps // 10, 50),  # Daha sık save
+            max_steps=args.num_steps,
+            save_total_limit=5,  # Daha az checkpoint sakla
+            per_device_eval_batch_size=args.eval_batchsize,
+            predict_with_generate=True,
+            generation_max_length=225,
+            logging_steps=max(args.num_steps // 20, 10),
+            report_to=["tensorboard"],
+            load_best_model_at_end=True,
+            metric_for_best_model="wer",
+            greater_is_better=False,
+            # Overfitting önleme parametreleri
+            weight_decay=0.01,  # L2 regularization
+            lr_scheduler_type="cosine",  # Cosine learning rate decay
+            dataloader_num_workers=0,  # Windows uyumluluğu için 0
+            dataloader_pin_memory=False,  # Windows uyumluluğu için False
+            resume_from_checkpoint=args.resume_from_ckpt,
+        )
+
+    # Early stopping callback ekle
+    early_stopping_callback = EarlyStoppingCallback(
+        early_stopping_patience=3,  # 3 evaluation boyunca iyileşme yoksa dur
+        early_stopping_threshold=0.001  # Minimum iyileşme threshold
     )
 
-    # Create trainer
-    console.print("\n[bold blue]🏗️ Creating trainer...[/bold blue]")
     trainer = Seq2SeqTrainer(
         args=training_args,
         model=model,
-        train_dataset=dataset["train"],
-        eval_dataset=dataset["test"],
+        train_dataset=raw_dataset["train"],
+        eval_dataset=raw_dataset["eval"],
         data_collator=data_collator,
         compute_metrics=compute_metrics,
-        tokenizer=processor.tokenizer,  # tokenizer instead of feature_extractor
+        tokenizer=processor.feature_extractor,
+        callbacks=[early_stopping_callback],  # Early stopping callback ekle
     )
+
+    processor.save_pretrained(training_args.output_dir)
     console.print("[green]✅ Trainer created![/green]")
 
     # Training configuration summary
-    config_table = Table(title="Training Configuration (100 Steps - Optimized)")
+    config_table = Table(title="Final Training Configuration")
     config_table.add_column("Parameter", style="cyan")
     config_table.add_column("Value", style="green")
-    config_table.add_row("Max Steps", "100")
-    config_table.add_row("Learning Rate", "1e-5")
-    config_table.add_row("Batch Size", "1")
-    config_table.add_row("Gradient Accumulation", "8")
-    config_table.add_row("Effective Batch Size", "8")
-    config_table.add_row("FP16", "False (CPU)")
-    config_table.add_row("Scheduler", "cosine")
-    config_table.add_row("Warmup Steps", "10")
-    config_table.add_row("Weight Decay", "0.1")
-    config_table.add_row("Gradient Clipping", "1.0")
-    config_table.add_row("Device", "CPU")
-    config_table.add_row("Train Data", "5000 samples")
+    config_table.add_row("Model", args.model_name)
+    config_table.add_row("Language", args.language)
+    config_table.add_row("Strategy", args.train_strategy)
+    if args.train_strategy == 'steps':
+        config_table.add_row("Max Steps", str(args.num_steps))
+    else:
+        config_table.add_row("Epochs", str(args.num_epochs))
+    config_table.add_row("Learning Rate", str(args.learning_rate))
+    config_table.add_row("Train Batch Size", str(args.train_batchsize))
+    config_table.add_row("Eval Batch Size", str(args.eval_batchsize))
+    config_table.add_row("Gradient Accumulation", str(training_args.gradient_accumulation_steps))
+    config_table.add_row("FP16", str(use_fp16))
+    config_table.add_row("Device", "GPU" if not use_cpu else "CPU")
+    config_table.add_row("Train Samples", str(len(raw_dataset["train"])))
+    config_table.add_row("Eval Samples", str(len(raw_dataset["eval"])))
     console.print(config_table)
 
     # Start training
     console.print("\n[bold green]🚀 Starting training...[/bold green]")
-    console.print("[dim]100 adım CPU eğitimi 15-30 dakika sürebilir...[/dim]")
-    console.print("[yellow]💡 Daha iyi performans için 100 adım eğitim yapılıyor![/yellow]")
+    if use_cpu:
+        console.print(f"[dim]{args.num_steps} adım CPU eğitimi zaman alabilir...[/dim]")
+    else:
+        console.print(f"[dim]GPU ile {args.num_steps} adım eğitim başlıyor...[/dim]")
 
     try:
+        console.print('\n[bold blue]TRAINING IN PROGRESS...[/bold blue]')
         trainer.train()
-        console.print("\n[bold green]🎉 Training completed![/bold green]")
-        console.print("[green]✅ Model saved to './whisper-small-turkish' directory![/green]")
-        console.print("[yellow]🚀 100 adım eğitim tamamlandı - daha iyi performans bekleniyor![/yellow]")
+        console.print('\n[bold green]DONE TRAINING[/bold green]')
+        console.print(f"[green]✅ Model saved to '{args.output_dir}' directory![/green]")
         
     except Exception as e:
         console.print(f"\n[red]❌ Training error: {e}[/red]")
-        console.print("[yellow]💡 CPU kullanımında hata oluştu. Lütfen sistem kaynaklarını kontrol edin.[/yellow]")
+        console.print("[yellow]💡 Eğitim sırasında hata oluştu. Lütfen sistem kaynaklarını kontrol edin.[/yellow]")
 
     # Test example
     console.print("\n[bold blue]📝 Test example:[/bold blue]")
     console.print(Panel(
         "[bold]To test the model:[/bold]\n"
         "from transformers import pipeline\n"
-        "pipe = pipeline('automatic-speech-recognition', model='./whisper-small-turkish')\n"
+        f"pipe = pipeline('automatic-speech-recognition', model='{args.output_dir}')\n"
         "result = pipe('path/to/audio.wav')\n"
         "print(result['text'])",
         title="Usage Example",
