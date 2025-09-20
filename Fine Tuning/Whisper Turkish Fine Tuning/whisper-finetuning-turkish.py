@@ -86,12 +86,12 @@ def main():
         table.add_row("Test", str(len(dataset['test'])))
         console.print(table)
         
-        # Train with 5000 training and 100 test samples
+        # Train with exactly 5000 training and 100 test samples
         desired_train = 5000
         desired_test = 100
-        console.print(f"\n[bold yellow]📊 Subsampling dataset ({desired_train} train, {desired_test} test)...[/bold yellow]")
-        dataset["train"] = dataset["train"].select(range(min(desired_train, len(dataset["train"]) )))
-        dataset["test"] = dataset["test"].select(range(min(desired_test, len(dataset["test"]) )))
+        console.print(f"\n[bold yellow]📊 Dataset 5K train, 100 test olarak sınırlanıyor...[/bold yellow]")
+        dataset["train"] = dataset["train"].select(range(min(desired_train, len(dataset["train"]))))
+        dataset["test"] = dataset["test"].select(range(min(desired_test, len(dataset["test"]))))
         
         # Updated dataset info
         table = Table(title="Final Dataset")
@@ -132,9 +132,14 @@ def main():
     model = WhisperForConditionalGeneration.from_pretrained("openai/whisper-small")
     console.print("[green]✅ Model loaded![/green]")
 
-    # Model configuration
+    # Model configuration for CPU
     model.config.use_cache = False
     model.config.forced_decoder_ids = None  # clear forced decoder IDs
+    
+    # CPU için model'i optimize et
+    if not torch.cuda.is_available():
+        model.eval()  # CPU'da eval mode daha hızlı
+        torch.set_num_threads(os.cpu_count())  # Tüm CPU core'ları kullan
 
     # Enable cache for generation
     from functools import partial
@@ -211,13 +216,14 @@ def main():
                 sampling_rate=sampling_rate
             ).input_features[0]
             
-            # Tokenize text
+            # Tokenize text with better settings
             batch["labels"] = processor.tokenizer(
                 batch["text"], 
                 max_length=225, 
                 padding="max_length", 
-                truncation=True
-            ).input_ids
+                truncation=True,
+                return_tensors="pt"
+            ).input_ids.squeeze(0)  # Remove batch dimension
             
         except Exception as e:
             print(f"Audio preprocessing error: {e}")
@@ -231,8 +237,9 @@ def main():
                 "Dummy text for failed audio processing.", 
                 max_length=225, 
                 padding="max_length", 
-                truncation=True
-            ).input_ids
+                truncation=True,
+                return_tensors="pt"
+            ).input_ids.squeeze(0)
         
         return batch
 
@@ -308,48 +315,41 @@ def main():
 
     # Training arguments
     console.print("\n[bold blue]⚙️ Setting up training configuration...[/bold blue]")
-    use_fp16 = torch.cuda.is_available()
+    use_fp16 = False  # Force CPU usage
     
-    # GPU info
-    if use_fp16:
-        console.print(f"[green]🚀 GPU detected: {torch.cuda.get_device_name(0)}[/green]")
-        console.print("[blue]🔧 Enabling TF32 for faster training...[/blue]")
-        try:
-            torch.backends.cuda.matmul.allow_tf32 = True
-            torch.backends.cudnn.allow_tf32 = True
-            console.print("[green]✅ TF32 enabled![/green]")
-        except Exception:
-            console.print("[yellow]⚠️ TF32 not available[/yellow]")
-    else:
-        console.print("[yellow]⚠️ No GPU detected, using CPU[/yellow]")
+    # CPU info
+    console.print("[blue]💻 CPU kullanılıyor (GPU devre dışı)[/blue]")
+    console.print(f"[green]🔧 CPU Cores: {os.cpu_count()}[/green]")
     training_args = Seq2SeqTrainingArguments(
         output_dir="./whisper-small-turkish",
-        per_device_train_batch_size=2,
-        gradient_accumulation_steps=6,  # larger effective batch without extra VRAM
-        learning_rate=1.5e-5,
-        lr_scheduler_type="cosine",  # better convergence over longer training
-        warmup_steps=20,
-        max_steps=100,  # longer training for better results
+        per_device_train_batch_size=1,  # CPU için küçük batch size
+        gradient_accumulation_steps=8,  # Daha büyük effective batch size
+        learning_rate=1e-5,  # Daha düşük LR - daha stabil eğitim
+        lr_scheduler_type="cosine",  # Cosine scheduler - daha iyi convergence
+        warmup_steps=10,  # 100 adım için uygun warmup
+        max_steps=100,  # 100 adım - daha iyi performans için
         gradient_checkpointing=False,
-        fp16=use_fp16,
-        fp16_full_eval=use_fp16,
+        fp16=False,  # CPU'da fp16 kullanma
+        fp16_full_eval=False,
         eval_strategy="steps",
-        per_device_eval_batch_size=8,  # faster evaluation
+        per_device_eval_batch_size=2,  # CPU için küçük eval batch
         predict_with_generate=True,
-        generation_max_length=300,
-        generation_num_beams=5,
-        save_steps=25,
-        eval_steps=25,
-        logging_steps=5,
+        generation_max_length=225,
+        generation_num_beams=3,  # CPU için daha az beam
+        save_steps=25,  # 100 adımda 4 kez kaydet
+        eval_steps=25,  # 100 adımda 4 kez eval
+        logging_steps=5,  # Her 5 adımda log
         report_to=["tensorboard"],
         load_best_model_at_end=True,
         metric_for_best_model="wer",
         greater_is_better=False,
         push_to_hub=False,
         hub_strategy="checkpoint",
-        dataloader_num_workers=0,
-        dataloader_pin_memory=True,
-        weight_decay=0.01,
+        dataloader_num_workers=0,  # CPU için multiprocessing kapalı
+        dataloader_pin_memory=False,  # CPU için pin_memory kapalı
+        weight_decay=0.1,  # Daha güçlü regularization
+        adam_epsilon=1e-8,  # Adam optimizer epsilon
+        max_grad_norm=1.0,  # Gradient clipping
     )
 
     # Create trainer
@@ -366,31 +366,37 @@ def main():
     console.print("[green]✅ Trainer created![/green]")
 
     # Training configuration summary
-    config_table = Table(title="Training Configuration")
+    config_table = Table(title="Training Configuration (100 Steps - Optimized)")
     config_table.add_column("Parameter", style="cyan")
     config_table.add_column("Value", style="green")
     config_table.add_row("Max Steps", "100")
-    config_table.add_row("Learning Rate", "1.5e-5")
-    config_table.add_row("Batch Size", "2")
-    config_table.add_row("Gradient Accumulation", "6")
-    config_table.add_row("Effective Batch Size", "12")
-    config_table.add_row("FP16", str(use_fp16))
+    config_table.add_row("Learning Rate", "1e-5")
+    config_table.add_row("Batch Size", "1")
+    config_table.add_row("Gradient Accumulation", "8")
+    config_table.add_row("Effective Batch Size", "8")
+    config_table.add_row("FP16", "False (CPU)")
     config_table.add_row("Scheduler", "cosine")
-    config_table.add_row("Warmup Steps", "20")
+    config_table.add_row("Warmup Steps", "10")
+    config_table.add_row("Weight Decay", "0.1")
+    config_table.add_row("Gradient Clipping", "1.0")
+    config_table.add_row("Device", "CPU")
+    config_table.add_row("Train Data", "5000 samples")
     console.print(config_table)
 
     # Start training
     console.print("\n[bold green]🚀 Starting training...[/bold green]")
-    console.print("[dim]This process may take 10-30 minutes depending on your GPU...[/dim]")
+    console.print("[dim]100 adım CPU eğitimi 15-30 dakika sürebilir...[/dim]")
+    console.print("[yellow]💡 Daha iyi performans için 100 adım eğitim yapılıyor![/yellow]")
 
     try:
         trainer.train()
         console.print("\n[bold green]🎉 Training completed![/bold green]")
         console.print("[green]✅ Model saved to './whisper-small-turkish' directory![/green]")
+        console.print("[yellow]🚀 100 adım eğitim tamamlandı - daha iyi performans bekleniyor![/yellow]")
         
     except Exception as e:
         console.print(f"\n[red]❌ Training error: {e}[/red]")
-        console.print("[yellow]💡 Please check GPU memory and reduce the batch size.[/yellow]")
+        console.print("[yellow]💡 CPU kullanımında hata oluştu. Lütfen sistem kaynaklarını kontrol edin.[/yellow]")
 
     # Test example
     console.print("\n[bold blue]📝 Test example:[/bold blue]")

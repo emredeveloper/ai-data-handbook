@@ -11,3 +11,4 @@ soundfile
 tensorboard
 rich
 sacrebleu
+pathlib
