@@ -108,24 +108,25 @@ def convert_safetensors_to_pytorch():
         if temp_dir and os.path.exists(temp_dir):
             try:
                 shutil.rmtree(temp_dir)
-                console.print(f"[dim]🧹 Geçici dizin temizlendi: {temp_dir}[/dim]")
+                console.print(f"[dim]Gecici dizin temizlendi: {temp_dir}[/dim]")
             except Exception as cleanup_e:
-                console.print(f"[yellow]⚠️ Geçici dizin temizleme hatası: {cleanup_e}[/yellow]")
+                console.print(f"[yellow]Gecici dizin temizleme hatasi: {cleanup_e}[/yellow]")
 
 def main():
-    console = Console()
+    # Windows UTF-8 encoding sorunu için console ayarları
+    console = Console(force_terminal=True, legacy_windows=False)
     
-    console.print("[bold cyan]🔧 SafeTensors → PyTorch Dönüştürücü[/bold cyan]")
-    console.print("[dim]Windows dosya kilitleme sorunlarını çözen gelişmiş versiyon[/dim]\n")
+    console.print("[bold cyan]SafeTensors -> PyTorch Donusturucu[/bold cyan]")
+    console.print("[dim]Windows dosya kilitleme sorunlarini cozen gelismis versiyon[/dim]\n")
     
     success = convert_safetensors_to_pytorch()
     
     if success:
-        console.print("\n[bold green]🎉 Dönüşüm başarıyla tamamlandı![/bold green]")
-        console.print("[blue]Model artık PyTorch formatında kullanıma hazır.[/blue]")
+        console.print("\n[bold green]Donusum basariyla tamamlandi![/bold green]")
+        console.print("[blue]Model artik PyTorch formatinda kullanima hazir.[/blue]")
     else:
-        console.print("\n[bold red]❌ Dönüşüm başarısız![/bold red]")
-        console.print("[yellow]Lütfen hata mesajlarını kontrol edin ve tekrar deneyin.[/yellow]")
+        console.print("\n[bold red]Donusum basarisiz![/bold red]")
+        console.print("[yellow]Lutfen hata mesajlarini kontrol edin ve tekrar deneyin.[/yellow]")
 
 if __name__ == "__main__":
     main()

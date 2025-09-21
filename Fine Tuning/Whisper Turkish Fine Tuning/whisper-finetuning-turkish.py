@@ -103,41 +103,41 @@ def parse_arguments():
         type=float, 
         required=False, 
         default=5e-6, 
-        help='Learning rate for the fine-tuning process. Lower rate to prevent overfitting.'
+        help='Learning rate for the fine-tuning process. Lower for Turkish optimization.'
     )
     parser.add_argument(
         '--warmup', 
         type=int, 
         required=False, 
-        default=50, 
+        default=500, 
         help='Number of warmup steps. Increased for gradual learning rate increase.'
     )
     parser.add_argument(
         '--train_batchsize', 
         type=int, 
         required=False, 
-        default=1, 
+        default=4, 
         help='Batch size during the training phase.'
     )
     parser.add_argument(
         '--eval_batchsize', 
         type=int, 
         required=False, 
-        default=2, 
+        default=8, 
         help='Batch size during the evaluation phase.'
     )
     parser.add_argument(
         '--num_epochs', 
         type=int, 
         required=False, 
-        default=3, 
+        default=10, 
         help='Number of epochs to train for.'
     )
     parser.add_argument(
         '--num_steps', 
         type=int, 
         required=False, 
-        default=500, 
+        default=3000, 
         help='Number of steps to train for. Increased for better convergence.'
     )
     parser.add_argument(
@@ -159,7 +159,7 @@ def parse_arguments():
         type=str, 
         nargs='+', 
         required=False, 
-        default=['ysdede/khanacademy-turkish'], 
+        default=['cubukcum/TurkishVoiceDataset', 'ysdede/khanacademy-turkish'], 
         help='List of datasets to be used for training.'
     )
     parser.add_argument(
@@ -167,7 +167,7 @@ def parse_arguments():
         type=str, 
         nargs='+', 
         required=False, 
-        default=['default'], 
+        default=['default', 'default'], 
         help="List of training dataset configs. Eg. 'hi' for the Hindi part of Common Voice",
     )
     parser.add_argument(
@@ -175,7 +175,7 @@ def parse_arguments():
         type=str, 
         nargs='+', 
         required=False, 
-        default=['train'], 
+        default=['train', 'train'], 
         help="List of training dataset splits. Eg. 'train' for the train split of Common Voice",
     )
     parser.add_argument(
@@ -183,7 +183,7 @@ def parse_arguments():
         type=str, 
         nargs='+', 
         required=False, 
-        default=['transcription'], 
+        default=['transcription', 'transcription'], 
         help="Text column name of each training dataset. Eg. 'sentence' for Common Voice",
     )
     parser.add_argument(
@@ -229,7 +229,7 @@ def parse_arguments():
         '--max_eval_samples', 
         type=int, 
         required=False, 
-        default=100, 
+        default=200, 
         help='Maximum number of evaluation samples to use.'
     )
 
@@ -342,15 +342,17 @@ def main():
     model.config.max_target_positions = 448   # Max text tokens
     console.print("[green]✅ Generation parameters optimized[/green]")
     
-    # 5. Turkish-specific Suppress Tokens
+    # 5. Turkish-specific Suppress Tokens (Genişletilmiş)
     model.config.suppress_tokens = [
         1, 2, 7, 8, 9, 10, 14, 25, 26, 27, 28, 29, 31, 58, 59, 60, 61, 62, 63,
         90, 91, 92, 93, 359, 503, 522, 542, 873, 893, 902, 918, 922, 931,
         1350, 1853, 1982, 2460, 2627, 3246, 3253, 3268, 3536, 3846, 3961,
-        4183, 4667, 6585, 6647, 7273, 9061, 9383, 10428, 10929, 11938
+        4183, 4667, 6585, 6647, 7273, 9061, 9383, 10428, 10929, 11938,
+        # Ek Türkçe karakterler için suppress tokens
+        50257, 50258, 50259, 50260, 50261, 50262, 50263, 50264, 50265
     ]  # Türkçe için optimize edilmiş unwanted tokens
     model.config.begin_suppress_tokens = [220, 50256]  # Dokümantasyondan
-    console.print("[green]✅ Turkish-specific suppress tokens configured[/green]")
+    console.print("[green]✅ Turkish-specific suppress tokens configured (extended)[/green]")
     
     # 6. Audio Processing Optimization
     model.config.median_filter_width = 7  # Dokümantasyondan
@@ -380,9 +382,40 @@ def main():
     def load_all_datasets(split):    
         combined_dataset = []
         if split == 'train':
+            # Her veri setinden eşit miktarda veri al (toplam 1000 için 500'er)
+            samples_per_dataset = args.max_train_samples // len(args.train_datasets)
+            console.print(f"[blue]📊 Her veri setinden {samples_per_dataset} veri alınacak[/blue]")
+            
             for i, ds in enumerate(args.train_datasets):
                 console.print(f"[blue]📥 Loading train dataset: {ds}[/blue]")
-                dataset = load_dataset(ds, args.train_dataset_configs[i], split=args.train_dataset_splits[i])
+                
+                # Streaming ile sadece ihtiyacımız olan veriyi al
+                try:
+                    dataset = load_dataset(ds, args.train_dataset_configs[i], split=args.train_dataset_splits[i], streaming=True)
+                    
+                    # Streaming dataset'ten sadece ihtiyacımız olan veriyi al
+                    dataset_list = []
+                    for j, item in enumerate(dataset):
+                        if j >= samples_per_dataset:
+                            break
+                        dataset_list.append(item)
+                    
+                    # List'i dataset'e çevir
+                    from datasets import Dataset
+                    dataset = Dataset.from_list(dataset_list)
+                    console.print(f"[yellow]📊 {ds}: {len(dataset)} veri alındı (streaming)[/yellow]")
+                    
+                except Exception as e:
+                    console.print(f"[yellow]⚠️ Streaming başarısız, normal yükleme: {e}[/yellow]")
+                    dataset = load_dataset(ds, args.train_dataset_configs[i], split=args.train_dataset_splits[i])
+                    
+                    # Her veri setinden eşit miktarda veri al
+                    if len(dataset) > samples_per_dataset:
+                        dataset = dataset.select(range(samples_per_dataset))
+                        console.print(f"[yellow]📊 {ds}: {samples_per_dataset} veri seçildi[/yellow]")
+                    else:
+                        console.print(f"[yellow]📊 {ds}: Tüm {len(dataset)} veri kullanılıyor[/yellow]")
+                
                 dataset = dataset.cast_column("audio", Audio(args.sampling_rate))
                 if args.train_dataset_text_columns[i] != "sentence":
                     dataset = dataset.rename_column(args.train_dataset_text_columns[i], "sentence")
@@ -419,10 +452,18 @@ def main():
     raw_dataset["train"] = load_all_datasets('train')
     raw_dataset["eval"] = load_all_datasets('eval')
     
-    # Limit dataset sizes
-    console.print(f"[yellow]📊 Limiting train to {args.max_train_samples} and eval to {args.max_eval_samples} samples...[/yellow]")
-    raw_dataset["train"] = raw_dataset["train"].select(range(min(args.max_train_samples, len(raw_dataset["train"]))))
-    raw_dataset["eval"] = raw_dataset["eval"].select(range(min(args.max_eval_samples, len(raw_dataset["eval"]))))
+    # Limit dataset sizes (use all data if limit is set to -1)
+    if args.max_train_samples > 0:
+        console.print(f"[yellow]📊 Limiting train to {args.max_train_samples} samples...[/yellow]")
+        raw_dataset["train"] = raw_dataset["train"].select(range(min(args.max_train_samples, len(raw_dataset["train"]))))
+    else:
+        console.print(f"[green]📊 Using all {len(raw_dataset['train'])} training samples...[/green]")
+        
+    if args.max_eval_samples > 0:
+        console.print(f"[yellow]📊 Limiting eval to {args.max_eval_samples} samples...[/yellow]")
+        raw_dataset["eval"] = raw_dataset["eval"].select(range(min(args.max_eval_samples, len(raw_dataset["eval"]))))
+    else:
+        console.print(f"[green]📊 Using all {len(raw_dataset['eval'])} evaluation samples...[/green]")
     
     # Dataset info
     table = Table(title="Dataset Information")
@@ -521,7 +562,7 @@ def main():
         training_args = Seq2SeqTrainingArguments(
             output_dir=args.output_dir,
             per_device_train_batch_size=args.train_batchsize,
-            gradient_accumulation_steps=1,
+            gradient_accumulation_steps=4,
             learning_rate=args.learning_rate,
             warmup_steps=args.warmup,
             gradient_checkpointing=gradient_checkpointing,
@@ -540,11 +581,32 @@ def main():
             load_best_model_at_end=True,
             metric_for_best_model="wer",
             greater_is_better=False,
-            # Overfitting önleme parametreleri
-            weight_decay=0.01,  # L2 regularization
-            lr_scheduler_type="cosine",  # Cosine learning rate decay
+            # Overfitting önleme parametreleri - Türkçe için optimize
+            weight_decay=0.005,  # Daha düşük L2 regularization
+            lr_scheduler_type="cosine_with_restarts",  # Cosine with restarts
+            max_grad_norm=0.5,  # Daha agresif gradient clipping
+            # Ek optimizasyon parametreleri - Türkçe için
+            adam_beta1=0.9,  # Adam optimizer beta1
+            adam_beta2=0.98,  # Daha düşük beta2 (Türkçe için)
+            adam_epsilon=1e-6,  # Daha düşük epsilon
+            warmup_ratio=0.15,  # Daha uzun warmup (Türkçe için)
+            # Evaluation ve generation parametreleri
+            eval_accumulation_steps=1,  # Evaluation sırasında gradient accumulation
+            eval_delay=0,  # Evaluation gecikmesi
+            include_inputs_for_metrics=False,  # Metrics için input'ları dahil etme
+            # Data loading optimizasyonları
             dataloader_num_workers=0,  # Windows uyumluluğu için 0
             dataloader_pin_memory=False,  # Windows uyumluluğu için False
+            dataloader_drop_last=False,  # Son batch'i atlama
+            # Memory ve performance optimizasyonları
+            dataloader_persistent_workers=False,  # Persistent workers
+            # Logging ve monitoring
+            logging_first_step=True,  # İlk adımı logla
+            logging_nan_inf_filter=True,  # NaN/Inf değerleri filtrele
+            # Model saving optimizasyonları
+            save_safetensors=True,  # SafeTensors formatında kaydet
+            save_only_model=False,  # Sadece modeli kaydet
+            # Resume ve checkpoint
             resume_from_checkpoint=args.resume_from_ckpt,
         )
 
@@ -552,15 +614,15 @@ def main():
         training_args = Seq2SeqTrainingArguments(
             output_dir=args.output_dir,
             per_device_train_batch_size=args.train_batchsize,
-            gradient_accumulation_steps=8 if use_cpu else 1,
+            gradient_accumulation_steps=8 if use_cpu else 4,
             learning_rate=args.learning_rate,
             warmup_steps=args.warmup,
             gradient_checkpointing=gradient_checkpointing,
             fp16=use_fp16,
             eval_strategy="steps",
-            eval_steps=max(args.num_steps // 10, 50),  # Daha sık evaluation
+            eval_steps=max(args.num_steps // 20, 100),  # Daha sık evaluation
             save_strategy="steps",
-            save_steps=max(args.num_steps // 10, 50),  # Daha sık save
+            save_steps=max(args.num_steps // 20, 100),  # Daha sık save
             max_steps=args.num_steps,
             save_total_limit=5,  # Daha az checkpoint sakla
             per_device_eval_batch_size=args.eval_batchsize,
@@ -573,18 +635,39 @@ def main():
             load_best_model_at_end=True,
             metric_for_best_model="wer",
             greater_is_better=False,
-            # Overfitting önleme parametreleri
-            weight_decay=0.01,  # L2 regularization
-            lr_scheduler_type="cosine",  # Cosine learning rate decay
+            # Overfitting önleme parametreleri - Türkçe için optimize
+            weight_decay=0.005,  # Daha düşük L2 regularization
+            lr_scheduler_type="cosine_with_restarts",  # Cosine with restarts
+            max_grad_norm=0.5,  # Daha agresif gradient clipping
+            # Ek optimizasyon parametreleri - Türkçe için
+            adam_beta1=0.9,  # Adam optimizer beta1
+            adam_beta2=0.98,  # Daha düşük beta2 (Türkçe için)
+            adam_epsilon=1e-6,  # Daha düşük epsilon
+            warmup_ratio=0.15,  # Daha uzun warmup (Türkçe için)
+            # Evaluation ve generation parametreleri
+            eval_accumulation_steps=1,  # Evaluation sırasında gradient accumulation
+            eval_delay=0,  # Evaluation gecikmesi
+            include_inputs_for_metrics=False,  # Metrics için input'ları dahil etme
+            # Data loading optimizasyonları
             dataloader_num_workers=0,  # Windows uyumluluğu için 0
             dataloader_pin_memory=False,  # Windows uyumluluğu için False
+            dataloader_drop_last=False,  # Son batch'i atlama
+            # Memory ve performance optimizasyonları
+            dataloader_persistent_workers=False,  # Persistent workers
+            # Logging ve monitoring
+            logging_first_step=True,  # İlk adımı logla
+            logging_nan_inf_filter=True,  # NaN/Inf değerleri filtrele
+            # Model saving optimizasyonları
+            save_safetensors=True,  # SafeTensors formatında kaydet
+            save_only_model=False,  # Sadece modeli kaydet
+            # Resume ve checkpoint
             resume_from_checkpoint=args.resume_from_ckpt,
         )
 
     # Early stopping callback ekle
     early_stopping_callback = EarlyStoppingCallback(
-        early_stopping_patience=3,  # 3 evaluation boyunca iyileşme yoksa dur
-        early_stopping_threshold=0.001  # Minimum iyileşme threshold
+        early_stopping_patience=5,  # 5 evaluation boyunca iyileşme yoksa dur
+        early_stopping_threshold=0.0005  # Minimum iyileşme threshold
     )
 
     trainer = Seq2SeqTrainer(
@@ -616,6 +699,11 @@ def main():
     config_table.add_row("Train Batch Size", str(args.train_batchsize))
     config_table.add_row("Eval Batch Size", str(args.eval_batchsize))
     config_table.add_row("Gradient Accumulation", str(training_args.gradient_accumulation_steps))
+    config_table.add_row("Max Grad Norm", str(training_args.max_grad_norm))
+    config_table.add_row("Adam Beta1", str(training_args.adam_beta1))
+    config_table.add_row("Adam Beta2", str(training_args.adam_beta2))
+    config_table.add_row("Warmup Ratio", str(training_args.warmup_ratio))
+    config_table.add_row("Save SafeTensors", str(training_args.save_safetensors))
     config_table.add_row("FP16", str(use_fp16))
     config_table.add_row("Device", "GPU" if not use_cpu else "CPU")
     config_table.add_row("Train Samples", str(len(raw_dataset["train"])))
