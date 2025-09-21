@@ -8,6 +8,9 @@ import torch
 import argparse
 import evaluate
 import numpy as np
+import librosa
+import unicodedata
+import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Union
 from datasets import DatasetDict, Audio, load_dataset, concatenate_datasets
@@ -19,7 +22,8 @@ from transformers import (
     WhisperForConditionalGeneration, 
     Seq2SeqTrainingArguments, 
     Seq2SeqTrainer,
-    EarlyStoppingCallback
+    EarlyStoppingCallback,
+    TrainerCallback
 )
 import warnings
 warnings.filterwarnings("ignore")
@@ -29,6 +33,417 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeEl
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
+
+###############################     ADVANCED PREPROCESSING     ########################
+
+def advanced_audio_preprocessing(audio_array, sampling_rate):
+    """Gelişmiş audio preprocessing"""
+    try:
+        # Noise reduction
+        audio_array = librosa.effects.preemphasis(audio_array)
+        
+        # Volume normalization
+        audio_array = librosa.util.normalize(audio_array)
+        
+        # Silence trimming
+        audio_array, _ = librosa.effects.trim(audio_array, top_db=20)
+        
+        # Dynamic range compression
+        audio_array = np.clip(audio_array, -0.1, 0.1)
+        
+        return audio_array
+    except Exception as e:
+        print(f"Audio preprocessing error: {e}")
+        return audio_array
+
+def turkish_text_preprocessing(text):
+    """Türkçe metin preprocessing - İyileştirilmiş versiyon"""
+    if not text or len(text.strip()) < 2:
+        return " "
+    
+    # Unicode normalization
+    text = unicodedata.normalize('NFD', text)
+    
+    # Gereksiz boşlukları temizle
+    text = " ".join(text.split())
+    
+    # Türkçe karakterleri koru
+    text = text.strip()
+    
+    # Sayıları yazıya çevir (basit)
+    text = convert_numbers_to_words(text)
+    
+    # Kısaltmaları genişlet
+    text = expand_turkish_abbreviations(text)
+    
+    # Noktalama standardizasyonu
+    text = standardize_turkish_punctuation(text)
+    
+    # Yeni: Anlamsız karakterleri temizle
+    text = re.sub(r'[^\w\sçğıöşüÇĞIÖŞÜ.,!?;:\-]', '', text)
+    
+    # Yeni: Tekrar eden kelimeleri temizle
+    words = text.split()
+    cleaned_words = []
+    prev_word = ""
+    for word in words:
+        if word != prev_word:  # Tekrar eden kelimeyi atla
+            cleaned_words.append(word)
+        prev_word = word
+    text = " ".join(cleaned_words)
+    
+    # Yeni: Çok kısa kelimeleri temizle (1-2 harf)
+    words = text.split()
+    words = [word for word in words if len(word) > 2 or word in ['ve', 'da', 'de', 'ki', 'mi', 'mı', 'mu', 'mü']]
+    text = " ".join(words)
+    
+    return text
+
+def convert_numbers_to_words(text):
+    """Sayıları yazıya çevir"""
+    number_map = {
+        '0': 'sıfır', '1': 'bir', '2': 'iki', '3': 'üç', '4': 'dört',
+        '5': 'beş', '6': 'altı', '7': 'yedi', '8': 'sekiz', '9': 'dokuz'
+    }
+    
+    for digit, word in number_map.items():
+        text = text.replace(digit, word)
+    
+    return text
+
+def expand_turkish_abbreviations(text):
+    """Türkçe kısaltmaları genişlet"""
+    abbreviations = {
+        'vs.': 'versus',
+        'vb.': 've benzeri',
+        'vs': 'versus',
+        'vb': 've benzeri',
+        'dr.': 'doktor',
+        'prof.': 'profesör',
+        'mrb': 'merhaba',
+        'slm': 'selam'
+    }
+    
+    for abbr, full in abbreviations.items():
+        text = text.replace(abbr, full)
+    
+    return text
+
+def standardize_turkish_punctuation(text):
+    """Türkçe noktalama standardizasyonu"""
+    # Çoklu nokta temizleme
+    text = re.sub(r'\.{2,}', '.', text)
+    
+    # Çoklu ünlem temizleme
+    text = re.sub(r'!{2,}', '!', text)
+    
+    # Çoklu soru işareti temizleme
+    text = re.sub(r'\?{2,}', '?', text)
+    
+    # Gereksiz boşlukları temizle
+    text = re.sub(r'\s+', ' ', text)
+    
+    return text.strip()
+
+def audio_augmentation(audio_array, sampling_rate, augmentation_prob=0.3):
+    """Audio augmentation"""
+    if np.random.random() > augmentation_prob:
+        return audio_array
+    
+    try:
+        # Speed perturbation
+        if np.random.random() < 0.5:
+            speed_factor = np.random.uniform(0.9, 1.1)
+            audio_array = librosa.effects.time_stretch(audio_array, rate=speed_factor)
+        
+        # Pitch shifting
+        if np.random.random() < 0.3:
+            pitch_shift = np.random.randint(-2, 3)
+            audio_array = librosa.effects.pitch_shift(audio_array, sr=sampling_rate, n_steps=pitch_shift)
+        
+        # Background noise addition
+        if np.random.random() < 0.2:
+            noise_level = np.random.uniform(0.01, 0.05)
+            noise = np.random.normal(0, noise_level, len(audio_array))
+            audio_array = audio_array + noise
+        
+        return audio_array
+    except Exception as e:
+        print(f"Audio augmentation error: {e}")
+        return audio_array
+
+###############################     REWARD SHAPING     ########################
+
+class RewardShaping:
+    """Reward shaping for better Turkish learning"""
+    
+    def __init__(self):
+        self.weights = {
+            'accuracy': 0.30,        # Azaltıldı
+            'fluency': 0.20,         # Azaltıldı
+            'turkish_quality': 0.35, # Artırıldı (en önemli)
+            'length_consistency': 0.10, # Azaltıldı
+            'audio_alignment': 0.05  # Aynı
+        }
+    
+    def compute_comprehensive_reward(self, prediction, reference, audio_features=None):
+        """Kapsamlı reward hesaplama"""
+        rewards = {}
+        
+        # 1. Accuracy Reward (WER-based)
+        rewards['accuracy'] = self.compute_accuracy_reward(prediction, reference)
+        
+        # 2. Fluency Reward
+        rewards['fluency'] = self.compute_fluency_reward(prediction)
+        
+        # 3. Turkish Quality Reward
+        rewards['turkish_quality'] = self.compute_turkish_quality_reward(prediction)
+        
+        # 4. Length Consistency Reward
+        rewards['length_consistency'] = self.compute_length_reward(prediction, reference)
+        
+        # 5. Audio Alignment Reward
+        if audio_features is not None:
+            rewards['audio_alignment'] = self.compute_alignment_reward(prediction, audio_features)
+        else:
+            rewards['audio_alignment'] = 0.0
+        
+        # Weighted combination
+        total_reward = sum(self.weights[key] * rewards[key] for key in rewards.keys())
+        
+        return total_reward, rewards
+    
+    def compute_accuracy_reward(self, prediction, reference):
+        """Doğruluk reward'ı (WER tabanlı)"""
+        try:
+            # Basit edit distance hesaplama
+            pred_words = prediction.lower().split()
+            ref_words = reference.lower().split()
+            
+            if len(ref_words) == 0:
+                return 0.0
+            
+            # Levenshtein distance
+            distance = self.levenshtein_distance(pred_words, ref_words)
+            wer = distance / len(ref_words)
+            
+            # WER'i reward'a çevir (0-1 arası)
+            return max(0.0, 1.0 - wer)
+        except:
+            return 0.0
+    
+    def compute_fluency_reward(self, prediction):
+        """Akıcılık reward'ı"""
+        try:
+            words = prediction.split()
+            if len(words) < 2:
+                return 0.0
+            
+            # Kelime uzunluk varyansı (çok kısa/uzun kelimeler cezalandırılır)
+            word_lengths = [len(word) for word in words]
+            length_variance = np.var(word_lengths)
+            
+            # Varyans ne kadar düşükse o kadar akıcı
+            fluency_score = max(0.0, 1.0 - (length_variance / 10.0))
+            
+            return min(1.0, fluency_score)
+        except:
+            return 0.0
+    
+    def compute_turkish_quality_reward(self, prediction):
+        """Türkçe kalite reward'ı - Geliştirilmiş versiyon"""
+        try:
+            score = 0.0
+            prediction_lower = prediction.lower()
+            words = prediction_lower.split()
+            
+            if len(words) == 0:
+                return 0.0
+            
+            # 1. Türkçe karakter kullanımı (daha yüksek ağırlık)
+            turkish_chars = sum(1 for c in prediction if c in 'çğıöşüÇĞIÖŞÜ')
+            if len(prediction) > 0:
+                turkish_char_ratio = turkish_chars / len(prediction)
+                score += turkish_char_ratio * 0.6  # Artırıldı
+            
+            # 2. Türkçe kelime varlığı (genişletilmiş liste)
+            turkish_words = [
+                'bir', 'bu', 'şu', 'o', 'ben', 'sen', 'biz', 'siz', 'onlar',
+                've', 'ile', 'için', 'olan', 'var', 'yok', 'çok', 'daha',
+                'en', 'da', 'de', 'ki', 'mi', 'mı', 'mu', 'mü',
+                'gibi', 'kadar', 'sonra', 'önce', 'şimdi', 'her', 'bütün',
+                'tüm', 'hiç', 'bazı', 'birçok', 'çok', 'az', 'fazla'
+            ]
+            turkish_word_count = sum(1 for word in words if word in turkish_words)
+            turkish_word_ratio = turkish_word_count / len(words)
+            score += turkish_word_ratio * 0.4  # Artırıldı
+            
+            # 3. Türkçe gramer yapısı (basit kontroller)
+            # -mek/-mak mastar eki
+            infinitive_count = sum(1 for word in words if word.endswith(('mek', 'mak')))
+            if len(words) > 0:
+                infinitive_ratio = infinitive_count / len(words)
+                score += infinitive_ratio * 0.2
+            
+            # -yor, -iyor, -uyor, -üyor şimdiki zaman
+            present_tense_count = sum(1 for word in words if any(word.endswith(ending) for ending in ['yor', 'iyor', 'uyor', 'üyor']))
+            if len(words) > 0:
+                present_tense_ratio = present_tense_count / len(words)
+                score += present_tense_ratio * 0.2
+            
+            # 4. Anlamsız kelime cezası (İngilizce kelimeler)
+            english_words = ['the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by']
+            english_word_count = sum(1 for word in words if word in english_words)
+            if len(words) > 0:
+                english_word_ratio = english_word_count / len(words)
+                score -= english_word_ratio * 0.5  # Cezalandır
+            
+            # 5. Tekrar eden kelime cezası
+            if len(words) > 1:
+                unique_words = len(set(words))
+                repetition_penalty = 1.0 - (unique_words / len(words))
+                score -= repetition_penalty * 0.3
+            
+            # 6. Çok kısa veya çok uzun cümle cezası
+            if len(words) < 2:
+                score -= 0.5  # Çok kısa cümle
+            elif len(words) > 20:
+                score -= 0.2  # Çok uzun cümle
+            
+            return max(0.0, min(1.0, score))
+        except:
+            return 0.0
+    
+    def compute_length_reward(self, prediction, reference):
+        """Uzunluk tutarlılık reward'ı"""
+        try:
+            pred_len = len(prediction.split())
+            ref_len = len(reference.split())
+            
+            if ref_len == 0:
+                return 0.0
+            
+            length_ratio = pred_len / ref_len
+            
+            # Çok kısa veya çok uzun cezalandır
+            if length_ratio < 0.3:
+                return -0.5  # Çok kısa
+            elif length_ratio > 2.0:
+                return -0.5  # Çok uzun
+            elif 0.7 <= length_ratio <= 1.3:
+                return 1.0   # Mükemmel uzunluk
+            else:
+                return 0.5   # Kabul edilebilir uzunluk
+        except:
+            return 0.0
+    
+    def compute_alignment_reward(self, prediction, audio_features):
+        """Audio-text alignment reward'ı"""
+        try:
+            # Basit alignment kontrolü
+            pred_len = len(prediction.split())
+            audio_duration = len(audio_features) / 16000  # 16kHz sampling rate
+            
+            # Saniyede kelime sayısı (normal: 2-4 kelime/saniye)
+            words_per_second = pred_len / max(audio_duration, 0.1)
+            
+            if 1.5 <= words_per_second <= 4.0:
+                return 1.0
+            elif 1.0 <= words_per_second <= 5.0:
+                return 0.5
+            else:
+                return 0.0
+        except:
+            return 0.0
+    
+    def levenshtein_distance(self, s1, s2):
+        """Levenshtein distance hesaplama"""
+        if len(s1) < len(s2):
+            return self.levenshtein_distance(s2, s1)
+        
+        if len(s2) == 0:
+            return len(s1)
+        
+        previous_row = list(range(len(s2) + 1))
+        for i, c1 in enumerate(s1):
+            current_row = [i + 1]
+            for j, c2 in enumerate(s2):
+                insertions = previous_row[j + 1] + 1
+                deletions = current_row[j] + 1
+                substitutions = previous_row[j] + (c1 != c2)
+                current_row.append(min(insertions, deletions, substitutions))
+            previous_row = current_row
+        
+        return previous_row[-1]
+
+###############################     CUSTOM CALLBACKS     ########################
+
+class WERImprovementCallback(TrainerCallback):
+    """WER iyileştirmesini takip eden callback"""
+    
+    def __init__(self):
+        self.best_wer = float('inf')
+        self.initial_wer = None
+        self.initial_reward = None
+        self.wer_history = []
+        
+    def on_evaluate(self, args, state, control, model, logs=None, **kwargs):
+        if logs is not None and 'eval_wer' in logs:
+            current_wer = logs['eval_wer']
+            current_reward = logs.get('eval_avg_reward', 0.0)
+            
+            # İlk evaluation'da initial değerleri kaydet
+            if self.initial_wer is None:
+                self.initial_wer = current_wer
+                self.initial_reward = current_reward
+                print(f"\n🎯 Initial WER: {current_wer:.2f}% | Initial Reward: {current_reward:.3f}")
+            
+            # WER geçmişini güncelle
+            self.wer_history.append(current_wer)
+            
+            # En iyi WER'i güncelle
+            if current_wer < self.best_wer:
+                self.best_wer = current_wer
+                improvement = self.initial_wer - current_wer
+                reward_improvement = current_reward - self.initial_reward
+                print(f"🎉 New best WER: {current_wer:.2f}% (WER Improvement: +{improvement:.2f}% | Reward: {current_reward:.3f} | Reward Improvement: +{reward_improvement:.3f})")
+            else:
+                # Son 3 evaluation'daki ortalama WER
+                if len(self.wer_history) >= 3:
+                    recent_avg = sum(self.wer_history[-3:]) / 3
+                    improvement = self.initial_wer - recent_avg
+                    reward_improvement = current_reward - self.initial_reward
+                    print(f"📊 Current WER: {current_wer:.2f}% (Recent avg: {recent_avg:.2f}% | WER Improvement: +{improvement:.2f}% | Reward: {current_reward:.3f} | Reward Improvement: +{reward_improvement:.3f})")
+                else:
+                    improvement = self.initial_wer - current_wer
+                    reward_improvement = current_reward - self.initial_reward
+                    print(f"📊 Current WER: {current_wer:.2f}% (WER Improvement: +{improvement:.2f}% | Reward: {current_reward:.3f} | Reward Improvement: +{reward_improvement:.3f})")
+            
+            # Reward detaylarını göster
+            if 'eval_reward_accuracy' in logs:
+                print(f"   📈 Reward Details - Accuracy: {logs.get('eval_reward_accuracy', 0):.3f} | "
+                      f"Fluency: {logs.get('eval_reward_fluency', 0):.3f} | "
+                      f"Turkish: {logs.get('eval_reward_turkish_quality', 0):.3f} | "
+                      f"Length: {logs.get('eval_reward_length_consistency', 0):.3f}")
+    
+    def on_train_end(self, args, state, control, model, logs=None, **kwargs):
+        if self.initial_wer is not None:
+            final_wer_improvement = self.initial_wer - self.best_wer
+            final_reward_improvement = logs.get('eval_avg_reward', 0.0) - self.initial_reward if self.initial_reward else 0.0
+            
+            print(f"\n🏆 TRAINING COMPLETED!")
+            print(f"🎯 Initial WER: {self.initial_wer:.2f}% | Initial Reward: {self.initial_reward:.3f}")
+            print(f"🏅 Best WER: {self.best_wer:.2f}% | Final Reward: {logs.get('eval_avg_reward', 0.0):.3f}")
+            print(f"📈 WER Improvement: +{final_wer_improvement:.2f}% | Reward Improvement: +{final_reward_improvement:.3f}")
+            
+            # Son reward detayları
+            if logs:
+                print(f"📊 Final Reward Details:")
+                print(f"   Accuracy: {logs.get('eval_reward_accuracy', 0):.3f}")
+                print(f"   Fluency: {logs.get('eval_reward_fluency', 0):.3f}")
+                print(f"   Turkish Quality: {logs.get('eval_reward_turkish_quality', 0):.3f}")
+                print(f"   Length Consistency: {logs.get('eval_reward_length_consistency', 0):.3f}")
+                print(f"   Audio Alignment: {logs.get('eval_reward_audio_alignment', 0):.3f}")
 
 ###############################     DATA COLLATOR DEFINITION     ########################
 
@@ -116,15 +531,15 @@ def parse_arguments():
         '--train_batchsize', 
         type=int, 
         required=False, 
-        default=4, 
-        help='Batch size during the training phase.'
+        default=8, 
+        help='Batch size during the training phase. Increased for better performance.'
     )
     parser.add_argument(
         '--eval_batchsize', 
         type=int, 
         required=False, 
-        default=8, 
-        help='Batch size during the evaluation phase.'
+        default=16, 
+        help='Batch size during the evaluation phase. Increased for faster evaluation.'
     )
     parser.add_argument(
         '--num_epochs', 
@@ -137,8 +552,8 @@ def parse_arguments():
         '--num_steps', 
         type=int, 
         required=False, 
-        default=3000, 
-        help='Number of steps to train for. Increased for better convergence.'
+        default=1000, 
+        help='Number of steps to train for. Optimized for 1k steps.'
     )
     parser.add_argument(
         '--resume_from_ckpt', 
@@ -224,6 +639,13 @@ def parse_arguments():
         required=False, 
         default=5000, 
         help='Maximum number of training samples to use.'
+    )
+    parser.add_argument(
+        '--turkish_academy_ratio', 
+        type=float, 
+        required=False, 
+        default=0.9, 
+        help='Ratio of Turkish Academy data (0.9 = 90% Turkish Academy, 10% other)'
     )
     parser.add_argument(
         '--max_eval_samples', 
@@ -382,43 +804,51 @@ def main():
     def load_all_datasets(split):    
         combined_dataset = []
         if split == 'train':
-            # Her veri setinden eşit miktarda veri al (toplam 1000 için 500'er)
-            samples_per_dataset = args.max_train_samples // len(args.train_datasets)
-            console.print(f"[blue]📊 Her veri setinden {samples_per_dataset} veri alınacak[/blue]")
+            # Türkçe Academy verisi için 4750, diğer veri için 750
+            turkish_academy_samples = int(args.max_train_samples * args.turkish_academy_ratio)
+            other_samples = args.max_train_samples - turkish_academy_samples
             
-            for i, ds in enumerate(args.train_datasets):
-                console.print(f"[blue]📥 Loading train dataset: {ds}[/blue]")
+            console.print(f"[blue]📊 Turkish Academy: {turkish_academy_samples} veri[/blue]")
+            console.print(f"[blue]📊 Diğer veri: {other_samples} veri[/blue]")
+            
+            # Veri setleri ve sample sayıları
+            dataset_configs = [
+                ("ysdede/khanacademy-turkish", "default", "train", turkish_academy_samples),
+                ("cubukcum/TurkishVoiceDataset", "default", "train", other_samples)
+            ]
+            
+            for dataset_name, config, split_name, samples_needed in dataset_configs:
+                console.print(f"[blue]📥 Loading train dataset: {dataset_name} ({samples_needed} samples)[/blue]")
                 
                 # Streaming ile sadece ihtiyacımız olan veriyi al
                 try:
-                    dataset = load_dataset(ds, args.train_dataset_configs[i], split=args.train_dataset_splits[i], streaming=True)
+                    dataset = load_dataset(dataset_name, config, split=split_name, streaming=True)
                     
                     # Streaming dataset'ten sadece ihtiyacımız olan veriyi al
                     dataset_list = []
                     for j, item in enumerate(dataset):
-                        if j >= samples_per_dataset:
+                        if j >= samples_needed:
                             break
                         dataset_list.append(item)
                     
                     # List'i dataset'e çevir
                     from datasets import Dataset
                     dataset = Dataset.from_list(dataset_list)
-                    console.print(f"[yellow]📊 {ds}: {len(dataset)} veri alındı (streaming)[/yellow]")
+                    console.print(f"[yellow]📊 {dataset_name}: {len(dataset)} veri alındı (streaming)[/yellow]")
                     
                 except Exception as e:
                     console.print(f"[yellow]⚠️ Streaming başarısız, normal yükleme: {e}[/yellow]")
-                    dataset = load_dataset(ds, args.train_dataset_configs[i], split=args.train_dataset_splits[i])
+                    dataset = load_dataset(dataset_name, config, split=split_name)
                     
-                    # Her veri setinden eşit miktarda veri al
-                    if len(dataset) > samples_per_dataset:
-                        dataset = dataset.select(range(samples_per_dataset))
-                        console.print(f"[yellow]📊 {ds}: {samples_per_dataset} veri seçildi[/yellow]")
+                    # İhtiyacımız olan veriyi al
+                    if len(dataset) > samples_needed:
+                        dataset = dataset.select(range(samples_needed))
+                        console.print(f"[yellow]📊 {dataset_name}: {samples_needed} veri seçildi[/yellow]")
                     else:
-                        console.print(f"[yellow]📊 {ds}: Tüm {len(dataset)} veri kullanılıyor[/yellow]")
+                        console.print(f"[yellow]📊 {dataset_name}: Tüm {len(dataset)} veri kullanılıyor[/yellow]")
                 
                 dataset = dataset.cast_column("audio", Audio(args.sampling_rate))
-                if args.train_dataset_text_columns[i] != "sentence":
-                    dataset = dataset.rename_column(args.train_dataset_text_columns[i], "sentence")
+                dataset = dataset.rename_column("transcription", "sentence")
                 dataset = dataset.remove_columns(set(dataset.features.keys()) - set(["audio", "sentence"]))
                 combined_dataset.append(dataset)
         elif split == 'eval':
@@ -476,18 +906,36 @@ def main():
     def prepare_dataset(batch):
         # load and (possibly) resample audio data to 16kHz
         audio = batch["audio"]
-
-        # compute log-Mel input features from input audio array 
-        batch["input_features"] = processor.feature_extractor(audio["array"], sampling_rate=audio["sampling_rate"]).input_features[0]
-        # compute input length of audio sample in seconds
-        batch["input_length"] = len(audio["array"]) / audio["sampling_rate"]
         
-        # optional pre-processing steps
+        # Gelişmiş audio preprocessing
+        audio_array = advanced_audio_preprocessing(audio["array"], audio["sampling_rate"])
+        
+        # Audio augmentation (training sırasında)
+        if args.train_strategy == 'steps':
+            audio_array = audio_augmentation(audio_array, audio["sampling_rate"])
+
+        # compute log-Mel input features from processed audio array 
+        batch["input_features"] = processor.feature_extractor(audio_array, sampling_rate=audio["sampling_rate"]).input_features[0]
+        # compute input length of audio sample in seconds
+        batch["input_length"] = len(audio_array) / audio["sampling_rate"]
+        
+        # Gelişmiş text preprocessing
         transcription = batch["sentence"]
+        
+        # Türkçe text preprocessing
+        transcription = turkish_text_preprocessing(transcription)
+        
+        # Küçük harfe çevir (Türkçe için)
         if do_lower_case:
             transcription = transcription.lower()
+        
+        # Noktalama işaretlerini normalize et
         if do_remove_punctuation:
             transcription = normalizer(transcription).strip()
+        
+        # Boş transkripsiyonları kontrol et
+        if not transcription or len(transcription) < 2:
+            transcription = " "
         
         # encode target text to label ids
         batch["labels"] = processor.tokenizer(transcription).input_ids
@@ -542,8 +990,33 @@ def main():
             pred_str = [normalizer(pred) for pred in pred_str]
             label_str = [normalizer(label) for label in label_str]
 
+        # Temel WER hesaplama
         wer = 100 * metric.compute(predictions=pred_str, references=label_str)
-        return {"wer": wer}
+        
+        # Reward shaping ile gelişmiş metrikler
+        reward_shaper = RewardShaping()
+        total_rewards = []
+        detailed_rewards = []
+        
+        for pred, ref in zip(pred_str, label_str):
+            total_reward, rewards = reward_shaper.compute_comprehensive_reward(pred, ref)
+            total_rewards.append(total_reward)
+            detailed_rewards.append(rewards)
+        
+        # Ortalama reward'ları hesapla
+        avg_total_reward = np.mean(total_rewards) if total_rewards else 0.0
+        
+        # Detaylı reward'ları hesapla
+        avg_rewards = {}
+        if detailed_rewards:
+            for key in detailed_rewards[0].keys():
+                avg_rewards[f"reward_{key}"] = np.mean([r[key] for r in detailed_rewards])
+        
+        # Sonuçları birleştir
+        metrics = {"wer": wer, "avg_reward": avg_total_reward}
+        metrics.update(avg_rewards)
+        
+        return metrics
 
     ###############################     TRAINING ARGS AND TRAINING      ############################
 
@@ -614,15 +1087,15 @@ def main():
         training_args = Seq2SeqTrainingArguments(
             output_dir=args.output_dir,
             per_device_train_batch_size=args.train_batchsize,
-            gradient_accumulation_steps=8 if use_cpu else 4,
+            gradient_accumulation_steps=4 if use_cpu else 2,  # Daha küçük accumulation
             learning_rate=args.learning_rate,
             warmup_steps=args.warmup,
             gradient_checkpointing=gradient_checkpointing,
             fp16=use_fp16,
             eval_strategy="steps",
-            eval_steps=max(args.num_steps // 20, 100),  # Daha sık evaluation
+            eval_steps=100,  # Her 100 adımda bir evaluation
             save_strategy="steps",
-            save_steps=max(args.num_steps // 20, 100),  # Daha sık save
+            save_steps=100,  # Her 100 adımda bir save
             max_steps=args.num_steps,
             save_total_limit=5,  # Daha az checkpoint sakla
             per_device_eval_batch_size=args.eval_batchsize,
@@ -664,11 +1137,13 @@ def main():
             resume_from_checkpoint=args.resume_from_ckpt,
         )
 
-    # Early stopping callback ekle
+    # Callback'leri ekle
     early_stopping_callback = EarlyStoppingCallback(
-        early_stopping_patience=5,  # 5 evaluation boyunca iyileşme yoksa dur
-        early_stopping_threshold=0.0005  # Minimum iyileşme threshold
+        early_stopping_patience=3,  # 3 evaluation boyunca iyileşme yoksa dur
+        early_stopping_threshold=0.001  # Minimum iyileşme threshold
     )
+    
+    wer_improvement_callback = WERImprovementCallback()
 
     trainer = Seq2SeqTrainer(
         args=training_args,
@@ -678,7 +1153,7 @@ def main():
         data_collator=data_collator,
         compute_metrics=compute_metrics,
         tokenizer=processor.feature_extractor,
-        callbacks=[early_stopping_callback],  # Early stopping callback ekle
+        callbacks=[early_stopping_callback, wer_improvement_callback],  # Her iki callback'i ekle
     )
 
     processor.save_pretrained(training_args.output_dir)

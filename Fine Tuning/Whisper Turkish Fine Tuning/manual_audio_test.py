@@ -6,6 +6,10 @@ Evaluates fine-tuned Whisper models on Turkish datasets
 import os
 import argparse
 import evaluate
+import numpy as np
+import librosa
+import unicodedata
+import re
 from tqdm import tqdm
 from pathlib import Path
 from transformers import pipeline, WhisperForConditionalGeneration
@@ -13,6 +17,9 @@ from datasets import load_dataset, Audio
 from transformers.models.whisper.english_normalizer import BasicTextNormalizer
 import warnings
 warnings.filterwarnings("ignore")
+
+# Reward Shaping import
+from whisper_finetuning_turkish import RewardShaping, turkish_text_preprocessing, advanced_audio_preprocessing
 
 wer_metric = evaluate.load("wer")
 cer_metric = evaluate.load("cer")
@@ -57,7 +64,10 @@ def get_text_column_names(column_names):
 
 whisper_norm = BasicTextNormalizer()
 def normalise(batch):
-    batch["norm_text"] = whisper_norm(get_text(batch))
+    # Gelişmiş Türkçe preprocessing uygula
+    text = get_text(batch)
+    processed_text = turkish_text_preprocessing(text)
+    batch["norm_text"] = whisper_norm(processed_text)
     return batch
 
 
@@ -77,15 +87,42 @@ def test_model(model_pipeline, model_name, dataset, generate_kwargs):
     norm_predictions = []
     norm_references = []
     
+    # Reward shaping için
+    reward_shaper = RewardShaping()
+    total_rewards = []
+    detailed_rewards = []
+    
     print(f"\n🧪 {model_name} testi başlıyor...")
     
     for item in tqdm(dataset, desc=f'{model_name} Progress'):
-        result = model_pipeline(item["audio"], generate_kwargs=generate_kwargs)
+        # Audio preprocessing uygula
+        audio_array = item["audio"]["array"]
+        sampling_rate = item["audio"]["sampling_rate"]
+        processed_audio = advanced_audio_preprocessing(audio_array, sampling_rate)
         
-        predictions.append(result["text"])
-        references.append(get_text(item))
-        norm_predictions.append(whisper_norm(result["text"]))
+        # Processed audio ile test et
+        processed_audio_dict = {
+            "array": processed_audio,
+            "sampling_rate": sampling_rate
+        }
+        
+        result = model_pipeline(processed_audio_dict, generate_kwargs=generate_kwargs)
+        
+        # Gelişmiş text preprocessing
+        prediction = turkish_text_preprocessing(result["text"])
+        reference = turkish_text_preprocessing(get_text(item))
+        
+        predictions.append(prediction)
+        references.append(reference)
+        norm_predictions.append(whisper_norm(prediction))
         norm_references.append(item["norm_text"])
+        
+        # Reward hesapla
+        total_reward, rewards = reward_shaper.compute_comprehensive_reward(
+            prediction, reference, processed_audio
+        )
+        total_rewards.append(total_reward)
+        detailed_rewards.append(rewards)
     
     # Metrikleri hesapla - güvenlik kontrolü ile
     try:
@@ -132,6 +169,13 @@ def test_model(model_pipeline, model_name, dataset, generate_kwargs):
     success_rate = round(100 - wer, 2)
     norm_success_rate = round(100 - norm_wer, 2)
     
+    # Ortalama reward'ları hesapla
+    avg_total_reward = np.mean(total_rewards) if total_rewards else 0.0
+    avg_rewards = {}
+    if detailed_rewards:
+        for key in detailed_rewards[0].keys():
+            avg_rewards[f"avg_reward_{key}"] = np.mean([r[key] for r in detailed_rewards])
+    
     return {
         'model_name': model_name,
         'wer': wer,
@@ -141,7 +185,9 @@ def test_model(model_pipeline, model_name, dataset, generate_kwargs):
         'success_rate': success_rate,
         'norm_success_rate': norm_success_rate,
         'predictions': predictions,
-        'references': references
+        'references': references,
+        'avg_total_reward': avg_total_reward,
+        **avg_rewards # Detaylı reward'ları da ekle
     }
 
 def main(args):
@@ -202,16 +248,21 @@ def main(args):
     
     print(f"✅ Filtrelemeden sonra {len(dataset)} veri kaldı")
 
-    # Generate kwargs'ı ayarla - daha güvenli parametreler
+    # Generate kwargs'ı ayarla - daha agresif parametreler
     generate_kwargs = {
         "task": "transcribe",
         "language": args.language,
-        "max_length": 200,  # Daha kısa maksimum uzunluk
-        "num_beams": 1,  # Beam search kapalı
-        "do_sample": False,  # Deterministic generation
-        "temperature": 1.0,  # Normal temperature
-        "repetition_penalty": 1.1,  # Tekrar cezası
-        "no_repeat_ngram_size": 3,  # 3-gram tekrarını engelle
+        "max_length": 150,  # Daha kısa maksimum uzunluk
+        "min_length": 5,    # Minimum uzunluk
+        "num_beams": 1,     # Beam search kapalı
+        "do_sample": True,  # Sampling açık
+        "temperature": 0.7, # Daha düşük temperature
+        "top_p": 0.9,      # Nucleus sampling
+        "repetition_penalty": 1.3,  # Daha yüksek tekrar cezası
+        "no_repeat_ngram_size": 2,  # 2-gram tekrarını engelle
+        "length_penalty": 1.2,      # Uzunluk cezası
+        "early_stopping": True,     # Erken durdurma
+        "max_new_tokens": 100,      # Maksimum yeni token
     }
 
     # 1. Orijinal Whisper Modeli Test Et
@@ -303,6 +354,11 @@ def main(args):
     # Başarı oranı karşılaştırması
     success_improvement = round(finetuned_results['success_rate'] - original_results['success_rate'], 2)
     print(f"{'Başarı Oranı (%)':<20} {original_results['success_rate']:<15} {finetuned_results['success_rate']:<15} {success_improvement:+.2f}")
+    
+    # Reward karşılaştırması
+    if 'avg_total_reward' in finetuned_results:
+        reward_improvement = round(finetuned_results['avg_total_reward'] - original_results.get('avg_total_reward', 0), 3)
+        print(f"{'Reward':<20} {original_results.get('avg_total_reward', 0):<15.3f} {finetuned_results['avg_total_reward']:<15.3f} {reward_improvement:+.3f}")
     
     # Normalized metrikleri
     print(f"\n{'NORMALIZED':<20}")
