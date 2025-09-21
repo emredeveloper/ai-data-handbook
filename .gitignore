@@ -63,3 +63,6 @@ Fine Tuning/whisper-small-turkish/
 **/runs/
 **/wandb/
 **/events.out.tfevents*
+
+# Media - audio
+*.mp3

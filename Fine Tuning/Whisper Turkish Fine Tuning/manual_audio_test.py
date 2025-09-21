@@ -18,8 +18,26 @@ from transformers.models.whisper.english_normalizer import BasicTextNormalizer
 import warnings
 warnings.filterwarnings("ignore")
 
-# Reward Shaping import
-from whisper_finetuning_turkish import RewardShaping, turkish_text_preprocessing, advanced_audio_preprocessing
+# Reward Shaping import (dinamik yükleme - dosya adı tire içerdiği için modül olarak içe aktarılamıyor)
+try:
+    from whisper_finetuning_turkish import RewardShaping, turkish_text_preprocessing, advanced_audio_preprocessing  # noqa: F401
+except Exception:
+    import importlib.util
+    import sys
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    ft_path = os.path.join(current_dir, "whisper-finetuning-turkish.py")
+    if not os.path.exists(ft_path):
+        # Alternatif: çalışma dizininden dene
+        ft_path = os.path.join(os.getcwd(), "Fine Tuning", "Whisper Turkish Fine Tuning", "whisper-finetuning-turkish.py")
+    spec = importlib.util.spec_from_file_location("whisper_ft_dynamic", ft_path)
+    if spec is None or spec.loader is None:
+        raise ModuleNotFoundError("whisper-finetuning-turkish.py bulunamadı, RewardShaping import edilemedi")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["whisper_ft_dynamic"] = module
+    spec.loader.exec_module(module)
+    RewardShaping = module.RewardShaping
+    turkish_text_preprocessing = module.turkish_text_preprocessing
+    advanced_audio_preprocessing = module.advanced_audio_preprocessing
 
 wer_metric = evaluate.load("wer")
 cer_metric = evaluate.load("cer")
@@ -200,10 +218,11 @@ def main(args):
     # Her iki veri setinden 10'ar veri al - modelin görmediği veriler
     print("📊 Her iki veri setinden 10'ar veri alınıyor (modelin görmediği veriler)...")
     
-    # Veri setleri listesi
+    # Veri setleri listesi (3 kaynak): her birinden 10 örnek
     test_datasets = [
         ("cubukcum/TurkishVoiceDataset", "default", "train"),
-        ("ysdede/khanacademy-turkish", "default", "test")
+        ("ysdede/khanacademy-turkish", "default", "test"),
+        ("ilkerkara/common_voice_13_0_tr_pseudo_labelled", "tr", "test")
     ]
     
     combined_test_data = []
@@ -299,7 +318,7 @@ def main(args):
     )
     
     # Fine-tuned weights'i yükle - checkpoint-100'ü kullan
-    checkpoint_100_path = os.path.join(args.ckpt_dir, "checkpoint-300")
+    checkpoint_100_path = os.path.join(args.ckpt_dir, "checkpoint-100")
     if os.path.exists(checkpoint_100_path):
         print(f"📁 Checkpoint-100 kullanılıyor: {checkpoint_100_path}")
         

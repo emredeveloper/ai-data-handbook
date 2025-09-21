@@ -6,6 +6,7 @@ Fine-tunes the Whisper model using various Turkish datasets with flexible config
 import os
 import torch
 import argparse
+import csv
 import evaluate
 import numpy as np
 import librosa
@@ -145,8 +146,8 @@ def standardize_turkish_punctuation(text):
     
     return text.strip()
 
-def audio_augmentation(audio_array, sampling_rate, augmentation_prob=0.3):
-    """Audio augmentation"""
+def audio_augmentation(audio_array, sampling_rate, augmentation_prob=0.4):
+    """Audio augmentation (genelleme için zenginleştirilmiş)"""
     if np.random.random() > augmentation_prob:
         return audio_array
     
@@ -161,11 +162,39 @@ def audio_augmentation(audio_array, sampling_rate, augmentation_prob=0.3):
             pitch_shift = np.random.randint(-2, 3)
             audio_array = librosa.effects.pitch_shift(audio_array, sr=sampling_rate, n_steps=pitch_shift)
         
-        # Background noise addition
-        if np.random.random() < 0.2:
-            noise_level = np.random.uniform(0.01, 0.05)
-            noise = np.random.normal(0, noise_level, len(audio_array))
+        # Background noise addition (SNR kontrollü)
+        if np.random.random() < 0.5:
+            target_snr_db = np.random.uniform(5, 25)  # 5-25 dB arası
+            sig_power = np.mean(audio_array ** 2) + 1e-9
+            snr_linear = 10 ** (target_snr_db / 10)
+            noise_power = sig_power / snr_linear
+            noise = np.random.normal(0, np.sqrt(noise_power), size=len(audio_array))
             audio_array = audio_array + noise
+
+        # Random gain / soft clipping
+        if np.random.random() < 0.4:
+            gain = np.random.uniform(0.7, 1.3)
+            audio_array = audio_array * gain
+            # soft clipping
+            audio_array = np.tanh(audio_array)
+
+        # Simple reverb (exponential decay IR)
+        if np.random.random() < 0.3:
+            ir_len = int(0.03 * sampling_rate)  # ~30 ms
+            decay = np.exp(-np.linspace(0, 6, ir_len))
+            ir = decay * np.random.uniform(0.8, 1.2, size=ir_len)
+            audio_array = np.convolve(audio_array, ir, mode='same')
+
+        # Simple band-pass via FFT mask (approx)
+        if np.random.random() < 0.3:
+            low = np.random.uniform(100, 300)
+            high = np.random.uniform(3000, 6000)
+            n = len(audio_array)
+            spec = np.fft.rfft(audio_array)
+            freqs = np.fft.rfftfreq(n, d=1.0 / sampling_rate)
+            mask = (freqs >= low) & (freqs <= high)
+            spec = spec * mask
+            audio_array = np.fft.irfft(spec, n=n)
         
         return audio_array
     except Exception as e:
@@ -391,6 +420,31 @@ class WERImprovementCallback(TrainerCallback):
         if logs is not None and 'eval_wer' in logs:
             current_wer = logs['eval_wer']
             current_reward = logs.get('eval_avg_reward', 0.0)
+            # Ek metrikler
+            reward_accuracy = logs.get('eval_reward_accuracy', None)
+            reward_fluency = logs.get('eval_reward_fluency', None)
+            reward_turkish_quality = logs.get('eval_reward_turkish_quality', None)
+            reward_length = logs.get('eval_reward_length_consistency', None)
+
+            # Adım bazlı CSV log'u (ablation/etki izlemesi için)
+            try:
+                csv_path = os.path.join(args.output_dir, 'eval_metrics_log.csv')
+                file_exists = os.path.exists(csv_path)
+                with open(csv_path, 'a', newline='', encoding='utf-8') as f:
+                    writer = csv.writer(f)
+                    if not file_exists:
+                        writer.writerow(['global_step','eval_wer','eval_avg_reward','reward_accuracy','reward_fluency','reward_turkish_quality','reward_length'])
+                    writer.writerow([
+                        int(state.global_step),
+                        float(current_wer),
+                        float(current_reward),
+                        float(reward_accuracy) if reward_accuracy is not None else '',
+                        float(reward_fluency) if reward_fluency is not None else '',
+                        float(reward_turkish_quality) if reward_turkish_quality is not None else '',
+                        float(reward_length) if reward_length is not None else '',
+                    ])
+            except Exception as e:
+                print(f"CSV log yazımı hatası: {e}")
             
             # İlk evaluation'da initial değerleri kaydet
             if self.initial_wer is None:
@@ -444,6 +498,20 @@ class WERImprovementCallback(TrainerCallback):
                 print(f"   Turkish Quality: {logs.get('eval_reward_turkish_quality', 0):.3f}")
                 print(f"   Length Consistency: {logs.get('eval_reward_length_consistency', 0):.3f}")
                 print(f"   Audio Alignment: {logs.get('eval_reward_audio_alignment', 0):.3f}")
+                # Son toplu CSV özeti
+                try:
+                    summary_csv = os.path.join(args.output_dir, 'eval_summary.csv')
+                    with open(summary_csv, 'w', newline='', encoding='utf-8') as f:
+                        writer = csv.writer(f)
+                        writer.writerow(['initial_wer','best_wer','final_wer_improvement','final_avg_reward'])
+                        writer.writerow([
+                            float(self.initial_wer),
+                            float(self.best_wer),
+                            float(final_wer_improvement),
+                            float(logs.get('eval_avg_reward', 0.0)),
+                        ])
+                except Exception as e:
+                    print(f"CSV özet yazımı hatası: {e}")
 
 ###############################     DATA COLLATOR DEFINITION     ########################
 
@@ -455,12 +523,20 @@ class DataCollatorSpeechSeq2SeqWithPadding:
         # split inputs and labels since they have to be of different lengths and need different padding methods
         # first treat the audio inputs by simply returning torch tensors
         input_features = [{"input_features": feature["input_features"]} for feature in features]
-        batch = self.processor.feature_extractor.pad(input_features, return_tensors="pt")
+        # attention mask üret (WhisperFeatureExtractor bunu destekler ve generate sırasında uyarıları azaltır)
+        batch = self.processor.feature_extractor.pad(
+            input_features,
+            return_tensors="pt",
+            return_attention_mask=True,
+        )
 
-        # get the tokenized label sequences
-        label_features = [{"input_ids": feature["labels"]} for feature in features]
-        # pad the labels to max length
-        labels_batch = self.processor.tokenizer.pad(label_features, return_tensors="pt")
+        # get the tokenized label sequences (tek çağrıda encode + pad)
+        labels_text = [f.get("labels_text", " ") for f in features]
+        labels_batch = self.processor.tokenizer(
+            labels_text,
+            padding=True,
+            return_tensors="pt",
+        )
 
         # replace padding with -100 to ignore loss correctly
         labels = labels_batch["input_ids"].masked_fill(labels_batch.attention_mask.ne(1), -100)
@@ -606,7 +682,7 @@ def parse_arguments():
         type=str, 
         nargs='+', 
         required=False, 
-        default=['ysdede/khanacademy-turkish'], 
+        default=['ysdede/khanacademy-turkish', 'cubukcum/TurkishVoiceDataset', 'ilkerkara/common_voice_13_0_tr_pseudo_labelled'], 
         help='List of datasets to be used for evaluation.'
     )
     parser.add_argument(
@@ -614,7 +690,7 @@ def parse_arguments():
         type=str, 
         nargs='+', 
         required=False, 
-        default=['default'], 
+        default=['default', 'default', 'tr'], 
         help="List of evaluation dataset configs. Eg. 'hi_in' for the Hindi part of Google Fleurs",
     )
     parser.add_argument(
@@ -622,7 +698,7 @@ def parse_arguments():
         type=str, 
         nargs='+', 
         required=False, 
-        default=['test'], 
+        default=['test', 'train', 'test'], 
         help="List of evaluation dataset splits. Using 'test' for unseen data evaluation.",
     )
     parser.add_argument(
@@ -630,7 +706,7 @@ def parse_arguments():
         type=str, 
         nargs='+', 
         required=False, 
-        default=['transcription'], 
+        default=['transcription', 'transcription', 'sentence'], 
         help="Text column name of each evaluation dataset. Eg. 'transcription' for Google Fleurs",
     )
     parser.add_argument(
@@ -640,12 +716,46 @@ def parse_arguments():
         default=5000, 
         help='Maximum number of training samples to use.'
     )
+    # Yeni: Üç eğitim verisini oranlarla belirt
     parser.add_argument(
-        '--turkish_academy_ratio', 
-        type=float, 
-        required=False, 
-        default=0.9, 
-        help='Ratio of Turkish Academy data (0.9 = 90% Turkish Academy, 10% other)'
+        '--train_mix_datasets', 
+        type=str,
+        nargs='+',
+        required=False,
+        default=['ysdede/khanacademy-turkish', 'cubukcum/TurkishVoiceDataset', 'mozilla-foundation/common_voice_13_0'],
+        help='Training datasets list for mixing (3 datasets).'
+    )
+    parser.add_argument(
+        '--train_mix_configs', 
+        type=str,
+        nargs='+',
+        required=False,
+        default=['default', 'default', 'tr'],
+        help='Configs for training datasets list (aligned by index).'
+    )
+    parser.add_argument(
+        '--train_mix_splits', 
+        type=str,
+        nargs='+',
+        required=False,
+        default=['train', 'train', 'train'],
+        help='Splits for training datasets list.'
+    )
+    parser.add_argument(
+        '--train_mix_text_columns', 
+        type=str,
+        nargs='+',
+        required=False,
+        default=['transcription', 'transcription', 'sentence'],
+        help='Text columns for each training dataset before renaming to sentence.'
+    )
+    parser.add_argument(
+        '--train_mix_ratios', 
+        type=float,
+        nargs='+',
+        required=False,
+        default=[0.6, 0.3, 0.1],
+        help='Ratios for each training dataset (sum must be 1.0).'
     )
     parser.add_argument(
         '--max_eval_samples', 
@@ -781,6 +891,25 @@ def main():
     
     console.print("[green]🎯 Whisper optimization completed![/green]")
 
+    # Eval/generate davranışı için varsayılan generation config ayarları (Trainer eval'de kullanılacak)
+    try:
+        gen_conf = model.generation_config
+        # Whisper özel: transcribe ve dil
+        setattr(gen_conf, "task", "transcribe")
+        setattr(gen_conf, "language", args.language)
+        # Tekrar ve uzunluk kısıtları
+        gen_conf.no_repeat_ngram_size = 2
+        gen_conf.repetition_penalty = 1.2
+        gen_conf.length_penalty = 1.2
+        gen_conf.do_sample = False  # Eval sırasında deterministik
+        gen_conf.max_new_tokens = 100
+        gen_conf.min_length = 5
+        gen_conf.num_beams = 5
+        model.generation_config = gen_conf
+        console.print("[green]✅ Generation config updated for evaluation (beams=5, repetition/length constraints)[/green]")
+    except Exception as _:
+        console.print("[yellow]⚠️ Generation config could not be updated; proceeding with defaults[/yellow]")
+
     if gradient_checkpointing:
         model.gradient_checkpointing_enable()
     else:
@@ -804,20 +933,22 @@ def main():
     def load_all_datasets(split):    
         combined_dataset = []
         if split == 'train':
-            # Türkçe Academy verisi için 4750, diğer veri için 750
-            turkish_academy_samples = int(args.max_train_samples * args.turkish_academy_ratio)
-            other_samples = args.max_train_samples - turkish_academy_samples
-            
-            console.print(f"[blue]📊 Turkish Academy: {turkish_academy_samples} veri[/blue]")
-            console.print(f"[blue]📊 Diğer veri: {other_samples} veri[/blue]")
-            
-            # Veri setleri ve sample sayıları
+            # Üç veri setini oranlara göre paylaştır
+            ratios = args.train_mix_ratios
+            if abs(sum(ratios) - 1.0) > 1e-6 or len(ratios) != 3:
+                raise ValueError("train_mix_ratios toplamı 1.0 olmalı ve 3 değer içermeli")
+
+            samples_list = [int(r * args.max_train_samples) for r in ratios]
+            # Yuvarlamadan doğan farkı son elemana ekle
+            diff = args.max_train_samples - sum(samples_list)
+            samples_list[-1] += diff
+
             dataset_configs = [
-                ("ysdede/khanacademy-turkish", "default", "train", turkish_academy_samples),
-                ("cubukcum/TurkishVoiceDataset", "default", "train", other_samples)
+                (args.train_mix_datasets[i], args.train_mix_configs[i], args.train_mix_splits[i], samples_list[i], args.train_mix_text_columns[i])
+                for i in range(3)
             ]
-            
-            for dataset_name, config, split_name, samples_needed in dataset_configs:
+
+            for dataset_name, config, split_name, samples_needed, text_col in dataset_configs:
                 console.print(f"[blue]📥 Loading train dataset: {dataset_name} ({samples_needed} samples)[/blue]")
                 
                 # Streaming ile sadece ihtiyacımız olan veriyi al
@@ -848,25 +979,32 @@ def main():
                         console.print(f"[yellow]📊 {dataset_name}: Tüm {len(dataset)} veri kullanılıyor[/yellow]")
                 
                 dataset = dataset.cast_column("audio", Audio(args.sampling_rate))
-                dataset = dataset.rename_column("transcription", "sentence")
+                if text_col != "sentence":
+                    dataset = dataset.rename_column(text_col, "sentence")
                 dataset = dataset.remove_columns(set(dataset.features.keys()) - set(["audio", "sentence"]))
                 combined_dataset.append(dataset)
         elif split == 'eval':
+            # Streaming ile sadece gerekli kadar örnek al
+            per_ds_limit = max(1, (args.max_eval_samples // max(1, len(args.eval_datasets))) if args.max_eval_samples > 0 else 100)
             for i, ds in enumerate(args.eval_datasets):
-                console.print(f"[blue]📥 Loading eval dataset: {ds}[/blue]")
+                console.print(f"[blue]📥 Loading eval dataset (streaming): {ds}[/blue]")
                 try:
-                    # İlk olarak test split'ini dene
+                    stream = load_dataset(ds, args.eval_dataset_configs[i], split=args.eval_dataset_splits[i], streaming=True)
+                    sampled = []
+                    for j, item in enumerate(stream):
+                        if j >= per_ds_limit:
+                            break
+                        sampled.append(item)
+                    from datasets import Dataset
+                    dataset = Dataset.from_list(sampled)
+                    console.print(f"[green]✅ {ds}: {len(dataset)} eval samples (streaming)")
+                except Exception as e:
+                    console.print(f"[yellow]⚠️ Streaming failed for {ds}: {e}. Falling back to normal load with select()[/yellow]")
                     dataset = load_dataset(ds, args.eval_dataset_configs[i], split=args.eval_dataset_splits[i])
-                    console.print(f"[green]✅ Test split loaded for evaluation[/green]")
-                except:
-                    # Test split yoksa train split'in son %10'unu kullan
-                    console.print(f"[yellow]⚠️ Test split not found, using validation subset from train[/yellow]")
-                    full_dataset = load_dataset(ds, args.eval_dataset_configs[i], split="train")
-                    # Train'in son %10'unu validation olarak kullan
-                    val_size = max(100, len(full_dataset) // 10)
-                    start_idx = len(full_dataset) - val_size
-                    dataset = full_dataset.select(range(start_idx, len(full_dataset)))
-                
+                    if len(dataset) > per_ds_limit:
+                        dataset = dataset.select(range(per_ds_limit))
+                    console.print(f"[green]✅ {ds}: {len(dataset)} eval samples (fallback)")
+
                 dataset = dataset.cast_column("audio", Audio(args.sampling_rate))
                 if args.eval_dataset_text_columns[i] != "sentence":
                     dataset = dataset.rename_column(args.eval_dataset_text_columns[i], "sentence")
@@ -937,15 +1075,21 @@ def main():
         if not transcription or len(transcription) < 2:
             transcription = " "
         
-        # encode target text to label ids
-        batch["labels"] = processor.tokenizer(transcription).input_ids
+        # encode'i collator'a bırak: burada sadece metni taşı
+        batch["labels_text"] = transcription
         return batch
 
     max_label_length = model.config.max_length
     min_input_length = 0.0
     max_input_length = 30.0
-    def is_in_length_range(length, labels):
-        return min_input_length < length < max_input_length and 0 < len(labels) < max_label_length
+    def is_in_length_range(length, labels_text):
+        # labels_text'i hızlıca tokenize ederek uzunluk kontrolü yap
+        try:
+            token_ids = processor.tokenizer(labels_text).input_ids if isinstance(labels_text, str) else []
+            label_len = len(token_ids)
+        except Exception:
+            label_len = 0
+        return min_input_length < length < max_input_length and 0 < label_len < max_label_length
 
     console.print("\n[bold blue]⚙️ Preparing dataset...[/bold blue]")
     with Progress(
@@ -960,7 +1104,7 @@ def main():
         progress.update(task, description="Filtering by length...")
         raw_dataset = raw_dataset.filter(
             is_in_length_range,
-            input_columns=["input_length", "labels"],
+            input_columns=["input_length", "labels_text"],
             num_proc=args.num_proc,
         ) 
         progress.update(task, description="[green]✅ Dataset prepared!")
@@ -987,8 +1131,15 @@ def main():
         label_str = processor.tokenizer.batch_decode(label_ids, skip_special_tokens=True)
 
         if do_normalize_eval:
+            # Önce Türkçe preprocessing, sonra BasicTextNormalizer
+            pred_str = [turkish_text_preprocessing(pred) for pred in pred_str]
+            label_str = [turkish_text_preprocessing(label) for label in label_str]
             pred_str = [normalizer(pred) for pred in pred_str]
             label_str = [normalizer(label) for label in label_str]
+
+        # Türkçe özel text preprocessing (pred ve label'a simetrik uygula)
+        pred_str = [turkish_text_preprocessing(p) for p in pred_str]
+        label_str = [turkish_text_preprocessing(l) for l in label_str]
 
         # Temel WER hesaplama
         wer = 100 * metric.compute(predictions=pred_str, references=label_str)
