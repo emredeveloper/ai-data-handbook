@@ -248,7 +248,7 @@ def main(args):
     )
     
     # Fine-tuned weights'i yükle - checkpoint-100'ü kullan
-    checkpoint_100_path = os.path.join(args.ckpt_dir, "checkpoint-100")
+    checkpoint_100_path = os.path.join(args.ckpt_dir, "checkpoint-300")
     if os.path.exists(checkpoint_100_path):
         print(f"📁 Checkpoint-100 kullanılıyor: {checkpoint_100_path}")
         

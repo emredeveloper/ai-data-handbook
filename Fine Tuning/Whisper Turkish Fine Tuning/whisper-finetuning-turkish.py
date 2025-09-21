@@ -88,8 +88,8 @@ def parse_arguments():
         '--num_proc', 
         type=int, 
         required=False, 
-        default=1, 
-        help='Number of parallel jobs to run. Helps parallelize the dataset prep stage.'
+        default=0, 
+        help='Number of parallel jobs to run. Set to 0 for Windows compatibility (no multiprocessing).'
     )
     parser.add_argument(
         '--train_strategy', 
