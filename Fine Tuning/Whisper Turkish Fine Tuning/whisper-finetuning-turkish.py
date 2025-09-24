@@ -212,7 +212,7 @@ class RewardShaping:
             'fluency': 0.20,         # Azaltıldı
             'turkish_quality': 0.35, # Artırıldı (en önemli)
             'length_consistency': 0.10, # Azaltıldı
-            'audio_alignment': 0.05  # Aynı
+            'audio_alignment': 0.0   # Etkisizleştirildi
         }
     
     def compute_comprehensive_reward(self, prediction, reference, audio_features=None):
@@ -1132,26 +1132,28 @@ def main():
         pred_str = processor.tokenizer.batch_decode(pred_ids, skip_special_tokens=True)
         label_str = processor.tokenizer.batch_decode(label_ids, skip_special_tokens=True)
 
+        # WER için (normalizer uygulayarak) metinler
+        wer_pred = pred_str
+        wer_ref = label_str
         if do_normalize_eval:
-            # Önce Türkçe preprocessing, sonra BasicTextNormalizer
-            pred_str = [turkish_text_preprocessing(pred) for pred in pred_str]
-            label_str = [turkish_text_preprocessing(label) for label in label_str]
-            pred_str = [normalizer(pred) for pred in pred_str]
-            label_str = [normalizer(label) for label in label_str]
+            wer_pred = [turkish_text_preprocessing(p) for p in wer_pred]
+            wer_ref = [turkish_text_preprocessing(l) for l in wer_ref]
+            wer_pred = [normalizer(p) for p in wer_pred]
+            wer_ref = [normalizer(l) for l in wer_ref]
 
-        # Türkçe özel text preprocessing (pred ve label'a simetrik uygula)
-        pred_str = [turkish_text_preprocessing(p) for p in pred_str]
-        label_str = [turkish_text_preprocessing(l) for l in label_str]
+        # Reward için (normalizer UYGULAMADAN) sadece Türkçe preprocessing uygula
+        reward_pred = [turkish_text_preprocessing(p) for p in pred_str]
+        reward_ref = [turkish_text_preprocessing(l) for l in label_str]
 
-        # Temel WER hesaplama
-        wer = 100 * metric.compute(predictions=pred_str, references=label_str)
+        # Temel WER hesaplama (normalizer'lı metinlerle)
+        wer = 100 * metric.compute(predictions=wer_pred, references=wer_ref)
         
         # Reward shaping ile gelişmiş metrikler
         reward_shaper = RewardShaping()
         total_rewards = []
         detailed_rewards = []
         
-        for pred, ref in zip(pred_str, label_str):
+        for pred, ref in zip(reward_pred, reward_ref):
             total_reward, rewards = reward_shaper.compute_comprehensive_reward(pred, ref)
             total_rewards.append(total_reward)
             detailed_rewards.append(rewards)
@@ -1200,7 +1202,7 @@ def main():
             per_device_eval_batch_size=args.eval_batchsize,
             predict_with_generate=True,
             generation_max_length=448,  # Dokümantasyondan max_target_positions
-            generation_num_beams=1,  # Beam search kapalı (training için)
+            generation_num_beams=5,  # Eval sırasında beam=5 (uyarıyı kaldırır)
             remove_unused_columns=False,  # Audio data için gerekli
             logging_steps=25,
             report_to=["tensorboard"],
@@ -1254,7 +1256,7 @@ def main():
             per_device_eval_batch_size=args.eval_batchsize,
             predict_with_generate=True,
             generation_max_length=448,  # Dokümantasyondan max_target_positions
-            generation_num_beams=1,  # Beam search kapalı (training için)
+            generation_num_beams=5,  # Eval sırasında beam=5 (uyarıyı kaldırır)
             remove_unused_columns=False,  # Audio data için gerekli
             logging_steps=max(args.num_steps // 20, 10),
             report_to=["tensorboard"],

@@ -66,3 +66,6 @@ Fine Tuning/whisper-small-turkish/
 
 # Media - audio
 *.mp3
+
+# Data files
+Classification/*.csv
