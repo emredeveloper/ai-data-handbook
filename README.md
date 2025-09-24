@@ -46,6 +46,7 @@ This repository offers a wide range of Turkish resources and practical examples 
 | `mongodb-mcp-server.md`                | MongoDB MCP server & Cursor IDE integration guide                           |
 | `README.md`                            | Main project description (this file)                                        |
 | `requirements.txt`                     | General Python dependencies list                                            |
+| `Classification/`                      | YouTube yorumlarında spam tespiti (TF-IDF + MultinomialNB + GridSearchCV)   |
 
 ---
 
@@ -58,8 +59,6 @@ To install general dependencies:
 pip install -r requirements.txt
 ```
 Some subfolders may have their own dependencies; check their README.md or requirements.txt files for details.
-
----
 
 ## 🤝 Contributing
 
