@@ -953,7 +953,7 @@ def main():
                 
                 # Streaming ile sadece ihtiyacımız olan veriyi al
                 try:
-                    dataset = load_dataset(dataset_name, config, split=split_name, streaming=True)
+                    dataset = load_dataset(dataset_name, config, split=split_name, streaming=True, trust_remote_code=True)
                     
                     # Streaming dataset'ten sadece ihtiyacımız olan veriyi al
                     dataset_list = []
@@ -969,7 +969,7 @@ def main():
                     
                 except Exception as e:
                     console.print(f"[yellow]⚠️ Streaming başarısız, normal yükleme: {e}[/yellow]")
-                    dataset = load_dataset(dataset_name, config, split=split_name)
+                    dataset = load_dataset(dataset_name, config, split=split_name, trust_remote_code=True)
                     
                     # İhtiyacımız olan veriyi al
                     if len(dataset) > samples_needed:
@@ -989,7 +989,7 @@ def main():
             for i, ds in enumerate(args.eval_datasets):
                 console.print(f"[blue]📥 Loading eval dataset (streaming): {ds}[/blue]")
                 try:
-                    stream = load_dataset(ds, args.eval_dataset_configs[i], split=args.eval_dataset_splits[i], streaming=True)
+                    stream = load_dataset(ds, args.eval_dataset_configs[i], split=args.eval_dataset_splits[i], streaming=True, trust_remote_code=True)
                     sampled = []
                     for j, item in enumerate(stream):
                         if j >= per_ds_limit:
@@ -1000,7 +1000,7 @@ def main():
                     console.print(f"[green]✅ {ds}: {len(dataset)} eval samples (streaming)")
                 except Exception as e:
                     console.print(f"[yellow]⚠️ Streaming failed for {ds}: {e}. Falling back to normal load with select()[/yellow]")
-                    dataset = load_dataset(ds, args.eval_dataset_configs[i], split=args.eval_dataset_splits[i])
+                    dataset = load_dataset(ds, args.eval_dataset_configs[i], split=args.eval_dataset_splits[i], trust_remote_code=True)
                     if len(dataset) > per_ds_limit:
                         dataset = dataset.select(range(per_ds_limit))
                     console.print(f"[green]✅ {ds}: {len(dataset)} eval samples (fallback)")
@@ -1092,6 +1092,8 @@ def main():
         return min_input_length < length < max_input_length and 0 < label_len < max_label_length
 
     console.print("\n[bold blue]⚙️ Preparing dataset...[/bold blue]")
+    # Windows uyumluluğu: num_proc=0 ise çoklu işlemeyi kapat (None geçir)
+    effective_num_proc = args.num_proc if isinstance(args.num_proc, int) and args.num_proc > 0 else None
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -1100,12 +1102,12 @@ def main():
         console=console
     ) as progress:
         task = progress.add_task("Processing audio data...", total=None)
-        raw_dataset = raw_dataset.map(prepare_dataset, num_proc=args.num_proc)
+        raw_dataset = raw_dataset.map(prepare_dataset, num_proc=effective_num_proc)
         progress.update(task, description="Filtering by length...")
         raw_dataset = raw_dataset.filter(
             is_in_length_range,
             input_columns=["input_length", "labels_text"],
-            num_proc=args.num_proc,
+            num_proc=effective_num_proc,
         ) 
         progress.update(task, description="[green]✅ Dataset prepared!")
     console.print("[green]✅ Dataset preparation completed![/green]")
