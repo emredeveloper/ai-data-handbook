@@ -2,3 +2,7 @@ deepeval>=0.21.0
 requests>=2.31.0
 datasets>=2.19.0
 tqdm>=4.66.0
+langchain>=0.2.0
+langchain-community>=0.2.0
+llama-index>=0.10.0
+sentence-transformers>=2.2.2

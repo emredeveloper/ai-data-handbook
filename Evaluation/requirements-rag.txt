@@ -1,0 +1,33 @@
+# DeepEval RAG Değerlendirme için Gerekli Kütüphaneler
+
+# Ana kütüphane
+deepeval>=1.0.0
+
+# HTTP istekleri için
+requests>=2.31.0
+
+# Async işlemler için (opsiyonel)
+aiohttp>=3.9.0
+
+# PDF işleme için
+PyPDF2>=3.0.0
+
+# Embeddings ve Vector Store
+sentence-transformers>=2.2.0
+faiss-cpu>=1.7.4  # GPU varsa: faiss-gpu
+
+# Diğer ML kütüphaneleri
+numpy>=1.24.0
+torch>=2.0.0  # sentence-transformers için gerekli
+
+# Ollama kullanıyorsanız (opsiyonel)
+# Ollama'yı sistem düzeyinde yüklemelisiniz: https://ollama.ai/download
+
+# OpenRouter veya Hugging Face kullanıyorsanız
+# API key'leriniz olmalı
+
+# Confident AI entegrasyonu için (opsiyonel - sonuçları görselleştirmek için)
+# deepeval login komutuyla giriş yapabilirsiniz
+
+# Diğer yardımcı kütüphaneler
+python-dotenv>=1.0.0  # API key'leri .env dosyasından okumak için

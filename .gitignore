@@ -69,3 +69,28 @@ Fine Tuning/whisper-small-turkish/
 
 # Data files
 Classification/*.csv
+
+# RAG & Vector Store
+# FAISS index dosyaları
+*.index
+*.json.faiss
+faiss_index*
+**/faiss_index*/
+
+# DeepEval cache ve sonuçlar
+cache.json
+.deepeval/
+deepeval_cache/
+
+# PDF dosyaları
+Evaluation/pdf/*.pdf
+**/*.pdf
+
+# Embedding modelleri cache
+.cache/
+huggingface/
+sentence-transformers/
+
+# Model çıktıları
+trainer_output/
+outputs/
