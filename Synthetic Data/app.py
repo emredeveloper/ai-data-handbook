@@ -1,9 +1,73 @@
 """
 Sentetik metin sınıflandırma veri üretim aracı.
 
-Örnek kullanım:
+Örnek kullandef build_user_prompt(num_items: int, labels: List[str], topics: List[str], language: str) -> str:
+    labels_str = ", ".join(labels)
+    topics_str = ", ".join(topics) if topics else "çeşitli günlük yaşam konuları"
+    return (
+        f"{language} dilinde kısa ve doğal metinler üret. "
+        f"Görev: verilen sınıflara yönelik metin sınıflandırma veri seti.\n"
+        f"Her örnek bir cümle veya kısa paragraf olsun.\n"
+        f"Sınıflar: [{labels_str}]\n"
+        f"Kapsam/konular: {topics_str}\n"
+        f"Çeşitli üslup, kelime dağarcığı ve bağlam kullan. Abartılı veya toksik içerik üretme. "
+        f"Kişisel veri (PII) ve marka/ad kullanımını uydurme. Gerçekçi ama anonim kal.\n"
+        f"Tam olarak {num_items} örnek üret ve SADECE geçerli JSON DİZİSİ döndür.\n"
+        f"Şema örneği: [{{\"text\": \"metin\", \"label\": \"{labels[0]}\"}}].\n"
+        f"JSON dışında hiçbir açıklama, kod bloğu veya etiket ekleme."
+    )
 
-  python "Syntetic Data/app.py" \
+
+def build_diverse_user_prompt(num_items: int, labels: List[str], topics: List[str], language: str, style_variety: int = 1) -> str:
+    labels_str = ", ".join(labels)
+    topics_str = ", ".join(topics) if topics else "çeşitli günlük yaşam konuları"
+    
+    # Farklı tarzlar için varyasyonlar
+    style_variants = [
+        # Tarz 1: Günlük konuşma dili, kişisel deneyimler
+        f"{language} dilinde günlük konuşma tarzında, kişisel deneyim ifade eden metinler üret. "
+        f"Birinci şahıs anlatım kullan ('ben', 'benim', 'bana' gibi). "
+        f"Duygusal ifadeler ve kişisel yorumlar içersin. "
+        f"Örnekler: 'Bu sabah kahvemi içerken çok keyif aldım', 'Patronumla yaptığım toplantı beni gerdi'.",
+        
+        # Tarz 2: Soru cümleleri ve diyaloglar
+        f"{language} dilinde soru cümleleri ve diyalog tarzında metinler üret. "
+        f"'mı/mi', 'nasıl', 'neden', 'kim' gibi soru kelimeleri kullan. "
+        f"Doğrudan hitap içeren ifadeler ekle. "
+        f"Örnekler: 'Bu filmi sen de beğendin mi?', 'Neden bu kadar geciktin?'.",
+        
+        # Tarz 3: Uzun açıklayıcı cümleler
+        f"{language} dilinde uzun ve açıklayıcı cümleler üret (25-40 kelime arası). "
+        f"Bağlı cümleler ve detaylı anlatımlar kullan. "
+        f"Sebep-sonuç ilişkileri kur. "
+        f"Örnekler: 'Geçen hafta başlayan yağmurlar yüzünden şehir trafiği tamamen felce uğradı ve herkesin işe gecikmesine neden oldu'.",
+        
+        # Tarz 4: Argo ve günlük ifadeler
+        f"{language} dilinde günlük argo ve konuşma ifadeleri içeren metinler üret. "
+        f"'ya', 'işte', 'falan', 'zaten', 'hani' gibi dolgu kelimeler kullan. "
+        f"Samimi ve rahat bir ton benimse. "
+        f"Örnekler: 'Ya bu işler falan hiç bitmez ki', 'Hani şu dediğin restoran, orası süperdi işte'.",
+        
+        # Tarz 5: Çok kısa ifadeler ve ünlemler
+        f"{language} dilinde çok kısa ifadeler (3-8 kelime) ve ünlem cümleleri üret. "
+        f"'Vay be!', 'Ne güzel!', 'Berbat!', 'Süper!' gibi ifadeler kullan. "
+        f"Keskin ve net duygusal tepkiler. "
+        f"Örnekler: 'Harika bir gün!', 'Berbat hava durumu.', 'Mükemmel performans!'."
+    ]
+    
+    selected_style = style_variants[style_variety % len(style_variants)]
+    
+    return (
+        f"{selected_style}\n"
+        f"Sınıflar: [{labels_str}]\n"
+        f"Kapsam/konular: {topics_str}\n"
+        f"Mevcut veri setindeki örneklerden farklı tarz ve yapıda ol. "
+        f"Çeşitli kelime seçimleri ve cümle yapıları kullan. "
+        f"Abartılı veya toksik içerik üretme. Gerçekçi ama anonim kal.\n"
+        f"Tam olarak {num_items} örnek üret ve SADECE geçerli JSON DİZİSİ döndür.\n"
+        f"Şema örneği: [{{\"text\": \"metin\", \"label\": \"{labels[0]}\"}}].\n"
+        f"JSON dışında hiçbir açıklama, kod bloğu veya etiket ekleme."
+    )Syntetic Data/app.py" \
     --num-samples 200 \
     --labels "olumlu,olumsuz,nötr" \
     --model "x-ai/grok-4-fast:free"
@@ -74,6 +138,58 @@ def build_user_prompt(num_items: int, labels: List[str], topics: List[str], lang
         f"Kapsam/konular: {topics_str}\n"
         f"Çeşitli üslup, kelime dağarcığı ve bağlam kullan. Abartılı veya toksik içerik üretme. "
         f"Kişisel veri (PII) ve marka/ad kullanımını uydurma. Gerçekçi ama anonim kal.\n"
+        f"Tam olarak {num_items} örnek üret ve SADECE geçerli JSON DİZİSİ döndür.\n"
+        f"Şema örneği: [{{\"text\": \"metin\", \"label\": \"{labels[0]}\"}}].\n"
+        f"JSON dışında hiçbir açıklama, kod bloğu veya etiket ekleme."
+    )
+
+
+def build_diverse_user_prompt(num_items: int, labels: List[str], topics: List[str], language: str, style_variety: int = 1) -> str:
+    labels_str = ", ".join(labels)
+    topics_str = ", ".join(topics) if topics else "çeşitli günlük yaşam konuları"
+    
+    # Farklı tarzlar için varyasyonlar
+    style_variants = [
+        # Tarz 1: Günlük konuşma dili, kişisel deneyimler
+        f"{language} dilinde günlük konuşma tarzında, kişisel deneyim ifade eden metinler üret. "
+        f"Birinci şahıs anlatım kullan ('ben', 'benim', 'bana' gibi). "
+        f"Duygusal ifadeler ve kişisel yorumlar içersin. "
+        f"Örnekler: 'Bu sabah kahvemi içerken çok keyif aldım', 'Patronumla yaptığım toplantı beni gerdi'.",
+        
+        # Tarz 2: Soru cümleleri ve diyaloglar
+        f"{language} dilinde soru cümleleri ve diyalog tarzında metinler üret. "
+        f"'mı/mi', 'nasıl', 'neden', 'kim' gibi soru kelimeleri kullan. "
+        f"Doğrudan hitap içeren ifadeler ekle. "
+        f"Örnekler: 'Bu filmi sen de beğendin mi?', 'Neden bu kadar geciktin?'.",
+        
+        # Tarz 3: Uzun açıklayıcı cümleler
+        f"{language} dilinde uzun ve açıklayıcı cümleler üret (25-40 kelime arası). "
+        f"Bağlı cümleler ve detaylı anlatımlar kullan. "
+        f"Sebep-sonuç ilişkileri kur. "
+        f"Örnekler: 'Geçen hafta başlayan yağmurlar yüzünden şehir trafiği tamamen felce uğradı ve herkesin işe gecikmesine neden oldu'.",
+        
+        # Tarz 4: Argo ve günlük ifadeler
+        f"{language} dilinde günlük argo ve konuşma ifadeleri içeren metinler üret. "
+        f"'ya', 'işte', 'falan', 'zaten', 'hani' gibi dolgu kelimeler kullan. "
+        f"Samimi ve rahat bir ton benimse. "
+        f"Örnekler: 'Ya bu işler falan hiç bitmez ki', 'Hani şu dediğin restoran, orası süperdi işte'.",
+        
+        # Tarz 5: Çok kısa ifadeler ve ünlemler
+        f"{language} dilinde çok kısa ifadeler (3-8 kelime) ve ünlem cümleleri üret. "
+        f"'Vay be!', 'Ne güzel!', 'Berbat!', 'Süper!' gibi ifadeler kullan. "
+        f"Keskin ve net duygusal tepkiler. "
+        f"Örnekler: 'Harika bir gün!', 'Berbat hava durumu.', 'Mükemmel performans!'."
+    ]
+    
+    selected_style = style_variants[style_variety % len(style_variants)]
+    
+    return (
+        f"{selected_style}\n"
+        f"Sınıflar: [{labels_str}]\n"
+        f"Kapsam/konular: {topics_str}\n"
+        f"Mevcut veri setindeki örneklerden farklı tarz ve yapıda ol. "
+        f"Çeşitli kelime seçimleri ve cümle yapıları kullan. "
+        f"Abartılı veya toksik içerik üretme. Gerçekçi ama anonim kal.\n"
         f"Tam olarak {num_items} örnek üret ve SADECE geçerli JSON DİZİSİ döndür.\n"
         f"Şema örneği: [{{\"text\": \"metin\", \"label\": \"{labels[0]}\"}}].\n"
         f"JSON dışında hiçbir açıklama, kod bloğu veya etiket ekleme."
@@ -173,7 +289,7 @@ def normalize_and_validate(items: List[Dict[str, Any]], labels: List[str]) -> Li
     return normalized
 
 
-def generate_dataset(api_key: str, gen: GenerationConfig, total_items: int) -> List[Dict[str, str]]:
+def generate_dataset(api_key: str, gen: GenerationConfig, total_items: int, use_diverse_styles: bool = False) -> List[Dict[str, str]]:
     all_items: List[Dict[str, str]] = []
     system_prompt = build_system_prompt(gen.language)
 
@@ -182,7 +298,15 @@ def generate_dataset(api_key: str, gen: GenerationConfig, total_items: int) -> L
     while remaining > 0:
         batch_index += 1
         this_batch = min(remaining, gen.batch_size)
-        user_prompt = build_user_prompt(this_batch, gen.labels, gen.topics, gen.language)
+        
+        # Farklı tarzlar için prompt seçimi
+        if use_diverse_styles:
+            # Her batch'te farklı bir tarz kullan
+            style_index = (batch_index - 1) % 5  # 5 farklı tarz var
+            user_prompt = build_diverse_user_prompt(this_batch, gen.labels, gen.topics, gen.language, style_index)
+            print(f"📝 Parti {batch_index}: Tarz {style_index + 1} kullanılıyor...")
+        else:
+            user_prompt = build_user_prompt(this_batch, gen.labels, gen.topics, gen.language)
 
         for attempt in range(gen.max_retries):
             try:
@@ -255,6 +379,7 @@ Bu veri seti, OpenRouter üzerinden "{model}" modeli kullanılarak otomatik üre
 
 - Sınıflar: {", ".join(labels)}
 - Örnek sayısı: {total}
+- Farklı tarzlarda üretilmiş sentetik metinler (kişisel deneyim, soru cümleleri, argo ifadeler, vs.)
 - Not: Metinler tamamen sentetiktir; gerçek kişi/kurum adları kullanılmamaya çalışılmıştır.
 
 """
@@ -272,6 +397,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--temperature", type=float, default=0.8, help="Yaratıcılık sıcaklığı")
     parser.add_argument("--output-dir", type=str, default=None, help="Çıktı klasörü (varsayılan: timestamp ile)")
     parser.add_argument("--seed", type=int, default=42, help="Rastgelelik için seed")
+    parser.add_argument("--test-size", type=float, default=0.1, help="Test seti oranı (0.0-1.0 arası, örneğin 0.15 = %15)")
+    parser.add_argument("--diverse-styles", action="store_true", help="Farklı tarzlarda veri üret (mevcut dataset'ten farklılaşmak için)")
 
     # Push işlemi ayrı dosyaya taşındı (push_hf.py)
 
@@ -295,7 +422,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     ensure_dir(out_dir)
 
     # OpenRouter API key
-    api_key = "sk-or-v1-"
+    api_key = "sk-or-v1-...."
     if not api_key:
         print("Hata: OPENROUTER_API_KEY ortam değişkeni tanımlı değil.")
         return 3
@@ -311,14 +438,17 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     print(f"Model: {gen.model} | Dil: {gen.language} | Sınıflar: {', '.join(labels)}")
     print(f"Toplam hedef örnek: {args.num_samples} (parti boyutu: {gen.batch_size})")
+    if args.diverse_styles:
+        print("🎨 Farklı tarzlarda veri üretimi aktif!")
 
-    items = generate_dataset(api_key, gen, args.num_samples)
+    items = generate_dataset(api_key, gen, args.num_samples, use_diverse_styles=args.diverse_styles)
     if not items:
         print("Üretim başarısız veya boş çıktı alındı.")
         return 4
 
     # Kaydet
-    train, test = train_test_split(items, test_size=0.1, seed=args.seed)
+    train, test = train_test_split(items, test_size=args.test_size, seed=args.seed)
+    print(f"📈 Veri dağılımı: Train={len(train)}, Test={len(test)} (örneklerin %{args.test_size*100:.1f}'i test)")
     jsonl_path = out_dir / "data.jsonl"
     csv_path = out_dir / "data.csv"
     train_jsonl = out_dir / "train.jsonl"
