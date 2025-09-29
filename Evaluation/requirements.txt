@@ -1,0 +1,4 @@
+deepeval>=0.21.0
+requests>=2.31.0
+datasets>=2.19.0
+tqdm>=4.66.0
