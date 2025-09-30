@@ -29,9 +29,26 @@ class AIVisionAgent:
         self.last_analysis = None
         self.api_call_count = 0
         self.successful_detections = 0
-        self.game_context = "You are an AI enemy in a 3D game. Analyze the game screenshot and find the player (blue cube)."
+        self.response_times = []
+        self.strategies_used = {"chase": 0, "flank": 0, "ambush": 0, "predict": 0}
+        
+        # 🎮 Gelişmiş oyun bağlamı
+        self.game_context = """You are an intelligent AI hunter in a 3D arena game. 
+Your goal: Track and catch the BLUE CUBE (player).
+You are the RED CUBE enemy.
+
+Game Rules:
+- Arena: 25x25 units
+- You scan every 3 seconds
+- Player is fast and unpredictable
+- Use strategic thinking to predict movements
+
+Be smart, be strategic, be entertaining!"""
+        
         print("\n🤖 AI Vision Agent initialized!")
         print(f"📡 API Key: {api_key[:20]}...{api_key[-10:]}")
+        print("🎯 Enhanced game context loaded")
+        print("📊 Performance tracking enabled")
     
     def analyze_game_screen(self, image_base64):
         """
@@ -66,17 +83,30 @@ class AIVisionAgent:
                             "content": [
                                 {
                                     "type": "text",
-                                    "text": """Analyze this game screenshot and answer in JSON format:
+                                    "text": """🎮 GAME ANALYSIS REQUEST
+
+You are the RED CUBE AI enemy. Analyze this screenshot and respond ONLY with valid JSON:
+
 {
-  "player_detected": true/false,
-  "player_location": "left/center/right/top/bottom",
-  "distance_estimate": "close/medium/far",
-  "strategy": "chase/flank/ambush",
-  "confidence": 0-100,
-  "reasoning": "brief explanation"
+  "player_detected": true or false,
+  "player_position": {
+    "horizontal": "left" or "center" or "right",
+    "vertical": "top" or "middle" or "bottom",
+    "x_estimate": -12 to 12,
+    "z_estimate": -12 to 12
+  },
+  "distance_estimate": "very_close" or "close" or "medium" or "far",
+  "player_velocity": "stationary" or "slow" or "fast" or "unknown",
+  "strategy": "chase" or "intercept" or "flank" or "predict" or "search",
+  "confidence": 0 to 100,
+  "threat_level": "low" or "medium" or "high",
+  "next_action": "brief action description",
+  "taunt": "fun message to player (optional)"
 }
 
-The blue cube is the player. Find it and track its position."""
+🎯 TARGET: Find the BLUE CUBE (player)
+📍 Your position: RED CUBE
+⚡ Make it exciting!"""
                                 },
                                 {
                                     "type": "image_url",
@@ -115,13 +145,24 @@ The blue cube is the player. Find it and track its position."""
                     if analysis.get('player_detected'):
                         self.successful_detections += 1
                     
+                    # Strateji tracking
+                    strategy = analysis.get('strategy', 'search')
+                    if strategy in self.strategies_used:
+                        self.strategies_used[strategy] += 1
+                    
                     print("\n🎯 PARSED ANALYSIS:")
                     print(f"   Player Detected: {analysis.get('player_detected', 'N/A')}")
-                    print(f"   Location: {analysis.get('player_location', 'N/A')}")
+                    print(f"   Position: {analysis.get('player_position', 'N/A')}")
+                    print(f"   Distance: {analysis.get('distance_estimate', 'N/A')}")
+                    print(f"   Velocity: {analysis.get('player_velocity', 'N/A')}")
                     print(f"   Confidence: {analysis.get('confidence', 'N/A')}%")
-                    print(f"   Strategy: {analysis.get('strategy', 'N/A')}")
-                    print(f"   Reasoning: {analysis.get('reasoning', 'N/A')}")
-                    print(f"\n📈 Stats: {self.successful_detections}/{self.api_call_count} successful detections")
+                    print(f"   Strategy: {strategy}")
+                    print(f"   Threat Level: {analysis.get('threat_level', 'N/A')}")
+                    print(f"   Next Action: {analysis.get('next_action', 'N/A')}")
+                    if analysis.get('taunt'):
+                        print(f"   💬 AI Says: '{analysis.get('taunt')}'")
+                    print(f"\n📈 Stats: {self.successful_detections}/{self.api_call_count} detections")
+                    print(f"📊 Strategies: Chase:{self.strategies_used['chase']} | Predict:{self.strategies_used['predict']}")
                     print(f"{'='*60}\n")
                     
                     return analysis
@@ -275,16 +316,104 @@ def simple_analyze():
             "error": str(e)
         }), 500
 
+@app.route('/api/ai-taunt', methods=['GET'])
+def ai_taunt():
+    """AI'dan rastgele mesaj al - Oyunu daha eğlenceli yapar"""
+    taunts = [
+        "🎯 Seni görüyorum mavi küp!",
+        "🏃‍♂️ Kaçamazsın, tahminlerim çok iyi!",
+        "🤖 Ben sadece bir AI'yım ama sen çok yavaşsın!",
+        "⚡ 3 saniyede bir tarama yapıyorum, hazır ol!",
+        "🎮 Bu oyunu kazanacağım, algoritma benden yana!",
+        "🔮 Bir sonraki hareketini tahmin ediyorum...",
+        "😎 Grok-4 gücü! Görme yeteneğim var!",
+        "🎯 Kovalama modu aktif! Saklan bakalım!",
+        "🚀 Tahmin algoritması devrede, kaçış yok!",
+        "💪 Her taramada daha akıllı oluyorum!"
+    ]
+    
+    import random
+    detection_rate = (ai_agent.successful_detections/ai_agent.api_call_count*100) if ai_agent.api_call_count > 0 else 0
+    
+    # AI mood'a göre mesaj seç
+    if detection_rate > 80:
+        mood = "confident"
+        message_pool = taunts[:5]
+    elif detection_rate > 50:
+        mood = "hunting"
+        message_pool = taunts[3:8]
+    else:
+        mood = "searching"
+        message_pool = taunts[5:]
+    
+    return jsonify({
+        "taunt": random.choice(message_pool),
+        "mood": mood,
+        "detection_rate": f"{detection_rate:.1f}%",
+        "timestamp": datetime.now().isoformat()
+    })
+
+@app.route('/api/game-tips', methods=['GET'])
+def game_tips():
+    """Oyunculara ipuçları - AI nasıl çalışıyor"""
+    tips = [
+        {
+            "title": "🤖 AI Gerçekten Görüyor",
+            "description": "Grok-4 Vision API her 3 saniyede ekran görüntüsü alıp seni analiz ediyor!",
+            "tip": "Zigzag hareket et, AI'nın tahminini zorlaştır!"
+        },
+        {
+            "title": "🔮 Tahmin Sistemi",
+            "description": "AI son 10 pozisyonunu takip edip gelecekteki yerini tahmin ediyor!",
+            "tip": "Ani yön değiştir, tahminleri boşa çıkar!"
+        },
+        {
+            "title": "⚡ 3 Saniye Kuralı",
+            "description": "AI 3 saniyede bir tarama yapıyor. Bu sürede strateji değiştirebilirsin!",
+            "tip": "Tarama sonrası yön değiştir, AI'yı şaşırt!"
+        },
+        {
+            "title": "🎯 Strateji Değişimleri",
+            "description": "AI 4 farklı mod kullanıyor: Search, Chase, Hunt, Predict",
+            "tip": "AI'nın modunu takip et, ona göre hareket et!"
+        },
+        {
+            "title": "💎 Kristal Toplama",
+            "description": "Kristaller toplayarak puan kazan, ama AI seni görebilir!",
+            "tip": "AI uzaktayken kristal topla, yakınken kaç!"
+        }
+    ]
+    
+    import random
+    return jsonify({
+        "tips": tips,
+        "random_tip": random.choice(tips),
+        "total_tips": len(tips)
+    })
+
 @app.route('/api/status', methods=['GET'])
 def status():
-    """API durumu"""
+    """API durumu ve istatistikler"""
+    detection_rate = (ai_agent.successful_detections/ai_agent.api_call_count*100) if ai_agent.api_call_count > 0 else 0
+    
     return jsonify({
         "status": "running",
         "ai_model": "x-ai/grok-4-fast:free",
+        "game_mode": "hunter",
+        "scan_interval": "3 seconds",
         "last_analysis": ai_agent.last_analysis,
-        "total_api_calls": ai_agent.api_call_count,
-        "successful_detections": ai_agent.successful_detections,
-        "detection_rate": f"{(ai_agent.successful_detections/ai_agent.api_call_count*100):.1f}%" if ai_agent.api_call_count > 0 else "0%",
+        "statistics": {
+            "total_api_calls": ai_agent.api_call_count,
+            "successful_detections": ai_agent.successful_detections,
+            "detection_rate": f"{detection_rate:.1f}%",
+            "strategies_used": ai_agent.strategies_used,
+            "most_used_strategy": max(ai_agent.strategies_used, key=ai_agent.strategies_used.get) if ai_agent.strategies_used else "none"
+        },
+        "ai_personality": {
+            "mood": "hunting" if detection_rate > 70 else "searching",
+            "aggression": "high" if detection_rate > 80 else "medium",
+            "intelligence": "adaptive"
+        },
         "timestamp": datetime.now().isoformat()
     })
 

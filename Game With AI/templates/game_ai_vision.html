@@ -14,7 +14,7 @@
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             overflow: hidden;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
         }
         
         #gameCanvas {
@@ -189,9 +189,64 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        
+        /* AI Taunt Message */
+        #aiTauntBox {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 0, 0, 0.95);
+            padding: 20px 40px;
+            border-radius: 15px;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            text-align: center;
+            display: none;
+            animation: slideIn 0.5s ease-out;
+            border: 3px solid #ff0;
+            box-shadow: 0 0 30px rgba(255, 0, 0, 0.8);
+            z-index: 1000;
+        }
+        
+        @keyframes slideIn {
+            from { transform: translate(-50%, -100%); opacity: 0; }
+            to { transform: translate(-50%, -50%); opacity: 1; }
+        }
+        
+        /* Game Tips Panel */
+        #tipsPanel {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 200, 100, 0.9);
+            padding: 15px;
+            border-radius: 10px;
+            color: white;
+            max-width: 350px;
+            font-size: 13px;
+            display: none;
+            border: 2px solid rgba(0, 255, 100, 0.5);
+        }
+        
+        .tip-title {
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #ffff00;
+        }
     </style>
 </head>
 <body>
+    <!-- AI Taunt Message Box -->
+    <div id="aiTauntBox"></div>
+    
+    <!-- Tips Panel -->
+    <div id="tipsPanel">
+        <div class="tip-title">💡 İpucu</div>
+        <div id="tipContent">Oyun yükleniyor...</div>
+    </div>
+    
     <div id="ui">
         <h2 style="margin-bottom: 15px; color: #0ff;">🎮 Oyun Durumu</h2>
         <div class="ui-row">
@@ -253,14 +308,15 @@
         </div>
         
         <div class="ai-info" style="margin-top: 15px; font-size: 12px; color: #aaa;">
-            💡 AI her 5 saniyede oyun ekranını görür ve seni analiz eder!<br>
-            🔍 Yukarıdaki sayılar gerçek API çağrılarını gösterir!
+            💡 AI her 3 saniyede oyun ekranını görür ve seni analiz eder!<br>
+            🔍 Yukarıdaki sayılar gerçek API çağrılarını gösterir!<br>
+            ⚡ Daha hızlı AI taraması aktif!
         </div>
     </div>
     
     <div id="instructions">
         <strong>🎮 Kontroller:</strong> WASD - Hareket | Space - Zıpla | ESC - Duraklat<br>
-        <span style="color: #ff6b6b;">⚠️ DİKKAT: AI düşman gerçekten oyun ekranını görebilir ve seni takip eder!</span>
+        <span style="color: #ff6b6b;">⚠️ DİKKAT: AI düşman 3 saniyede bir görüş yapar ve seni takip eder!</span>
     </div>
     
     <div id="gameOver">
@@ -280,29 +336,42 @@
         // Oyun değişkenleri
         let scene, camera, renderer;
         let player, aiEnemy, collectibles = [];
-        let score = 0, level = 1, timeLeft = 60;
+        let score = 0, level = 1, timeLeft = 90; // 90 saniye - daha uzun oyun
         let gameActive = true;
         let keys = {};
         let playerVelocity = { x: 0, y: 0, z: 0 };
         const gravity = -0.02;
         const jumpPower = 0.3;
         let isGrounded = true;
-        let aiScanInterval = 5000; // 5 saniye
+        let aiScanInterval = 3000; // 3 saniye - DAHA HIZLI!
         let lastAiScan = 0;
         let aiAnalysisData = null;
 
         // AI durumu
-        let aiMode = 'search'; // search, chase, hunt
-        let aiSpeed = 0.08;
+        let aiMode = 'search'; // search, chase, hunt, predict
+        let aiSpeed = 0.12; // Daha hızlı AI
+        
+        // Görsel efektler
+        let visionCone, scanParticles, playerTrail = [], aiTrail = [];
+        let scanRing, detectionBeam;
+        
+        // 🔮 TAHMİN SİSTEMİ
+        let playerPositionHistory = []; // Son pozisyonlar
+        let playerVelocityHistory = []; // Son hızlar
+        let predictedPosition = null;
+        let predictionMarker = null;
+        let predictionAccuracy = 0;
+        let totalPredictions = 0;
+        let successfulPredictions = 0;
 
         // Sahne oluştur
         function init() {
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x0a0a1a);
-            scene.fog = new THREE.Fog(0x0a0a1a, 10, 50);
+            scene.fog = new THREE.Fog(0x0a0a1a, 10, 40); // Daha geniş fog
 
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 10, 20);
+            camera.position.set(0, 12, 18); // Daha yuksek ve uzak - geniş görüş
             camera.lookAt(0, 0, 0);
 
             renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
@@ -327,8 +396,8 @@
             scene.add(pointLight);
             pointLight.position.set(0, 2, 0);
 
-            // Zemin
-            const groundGeometry = new THREE.PlaneGeometry(50, 50);
+            // Zemin (Küçültülmüş)
+            const groundGeometry = new THREE.PlaneGeometry(25, 25); // 50'den 25'e
             const groundMaterial = new THREE.MeshStandardMaterial({ 
                 color: 0x1a1a2e,
                 roughness: 0.8,
@@ -339,7 +408,7 @@
             ground.receiveShadow = true;
             scene.add(ground);
 
-            const gridHelper = new THREE.GridHelper(50, 50, 0x00ffff, 0x003344);
+            const gridHelper = new THREE.GridHelper(25, 25, 0x00ffff, 0x003344); // Küçültülmüş grid
             scene.add(gridHelper);
 
             // Oyuncu (MAVİ KÜP - AI bunu arayacak!)
@@ -362,9 +431,12 @@
                 emissiveIntensity: 0.8
             });
             aiEnemy = new THREE.Mesh(aiGeometry, aiMaterial);
-            aiEnemy.position.set(15, 0.6, 15);
+            aiEnemy.position.set(8, 0.6, 8); // Daha yakın başlangıç pozisyonu
             aiEnemy.castShadow = true;
             scene.add(aiEnemy);
+            
+            // ✨ GÖRSEL İYİLEŞTİRMELER ✨
+            createVisualEffects();
 
             // Kristaller
             createCollectibles(5);
@@ -382,11 +454,434 @@
                     if (timeLeft === 0) endGame('Zaman doldu!');
                 }
             }, 1000);
+            
+            // 💡 Tips sistemi - Her 15 saniyede bir ipucu göster
+            setInterval(() => {
+                if (gameActive) {
+                    showGameTip();
+                }
+            }, 15000);
+            
+            // İlk ipucu 3 saniye sonra
+            setTimeout(() => showGameTip(), 3000);
 
             animate();
         }
+        
+        // ✨ GÖRSEL EFEKTLER SİSTEMİ (OPTİMİZE) ✨
+        function createVisualEffects() {
+            // 1. AI Görüş Konisi (Hafifletilmiş)
+            const coneGeometry = new THREE.ConeGeometry(8, 15, 16, 1, true); // 32'den 16'ya
+            const coneMaterial = new THREE.MeshBasicMaterial({
+                color: 0xff0000,
+                transparent: true,
+                opacity: 0.1, // Daha şeffaf
+                side: THREE.DoubleSide,
+                wireframe: false
+            });
+            visionCone = new THREE.Mesh(coneGeometry, coneMaterial);
+            visionCone.rotation.x = Math.PI / 2;
+            visionCone.position.y = 0.6;
+            aiEnemy.add(visionCone);
+            
+            // 2. Tarama Halka Efekti (Basitleştirilmiş)
+            const ringGeometry = new THREE.RingGeometry(0.5, 0.7, 16); // 32'den 16'ya
+            const ringMaterial = new THREE.MeshBasicMaterial({
+                color: 0xff0000,
+                transparent: true,
+                opacity: 0,
+                side: THREE.DoubleSide
+            });
+            scanRing = new THREE.Mesh(ringGeometry, ringMaterial);
+            scanRing.rotation.x = -Math.PI / 2;
+            scanRing.position.y = 0.1;
+            aiEnemy.add(scanRing);
+            
+            // 3. Tespit Işını (Optimize)
+            const beamGeometry = new THREE.CylinderGeometry(0.1, 0.1, 20, 6); // 8'den 6'ya
+            const beamMaterial = new THREE.MeshBasicMaterial({
+                color: 0xff0000,
+                transparent: true,
+                opacity: 0,
+                emissive: 0xff0000,
+                emissiveIntensity: 1
+            });
+            detectionBeam = new THREE.Mesh(beamGeometry, beamMaterial);
+            detectionBeam.rotation.z = Math.PI / 2;
+            detectionBeam.position.y = 0.6;
+            scene.add(detectionBeam);
+            
+            // 4. Tarama Parçacıkları (Azaltılmış)
+            createScanParticles();
+            
+            // 5. 🔮 Tahmin İşaretçisi
+            createPredictionMarker();
+            
+            console.log('✨ Görsel efektler yüklendi (optimize)!');
+        }
+        
+        // Tarama Parçacıkları Oluştur (Optimize)
+        function createScanParticles() {
+            const particleCount = 50; // 100'den 50'ye azaltıldı
+            const particles = new THREE.BufferGeometry();
+            const positions = new Float32Array(particleCount * 3);
+            const colors = new Float32Array(particleCount * 3);
+            
+            for (let i = 0; i < particleCount * 3; i += 3) {
+                positions[i] = (Math.random() - 0.5) * 8; // Daha küçük alan
+                positions[i + 1] = Math.random() * 4;
+                positions[i + 2] = (Math.random() - 0.5) * 8;
+                
+                colors[i] = 1;
+                colors[i + 1] = Math.random() * 0.3;
+                colors[i + 2] = 0;
+            }
+            
+            particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            
+            const particleMaterial = new THREE.PointsMaterial({
+                size: 0.12, // Daha küçük
+                vertexColors: true,
+                transparent: true,
+                opacity: 0,
+                blending: THREE.AdditiveBlending
+            });
+            
+            scanParticles = new THREE.Points(particles, particleMaterial);
+            aiEnemy.add(scanParticles);
+        }
+        
+        // 🔮 Tahmin İşaretçisi Oluştur (Basitleştirilmiş)
+        function createPredictionMarker() {
+            const markerGeometry = new THREE.SphereGeometry(0.6, 12, 12); // Daha küçük detay
+            const markerMaterial = new THREE.MeshBasicMaterial({
+                color: 0x00ffff, // Cyan - daha görünür
+                transparent: true,
+                opacity: 0,
+                wireframe: true
+            });
+            predictionMarker = new THREE.Mesh(markerGeometry, markerMaterial);
+            predictionMarker.position.y = 0.5;
+            scene.add(predictionMarker);
+            
+            // Hedef halkası (basitleştirilmiş)
+            const targetRingGeo = new THREE.RingGeometry(0.8, 1, 16); // Daha az segment
+            const targetRingMat = new THREE.MeshBasicMaterial({
+                color: 0x00ffff,
+                transparent: true,
+                opacity: 0,
+                side: THREE.DoubleSide
+            });
+            const targetRing = new THREE.Mesh(targetRingGeo, targetRingMat);
+            targetRing.rotation.x = -Math.PI / 2;
+            predictionMarker.add(targetRing);
+            
+            predictionMarker.userData = {
+                ring: targetRing,
+                pulse: 0
+            };
+        }
+        
+        // Tarama Animasyonu Tetikle (Hızlandırılmış)
+        function triggerScanAnimation() {
+            // Halka efekti (daha hızlı)
+            let ringScale = 0;
+            const ringInterval = setInterval(() => {
+                ringScale += 1; // 0.5'ten 1'e - 2x hızlı
+                scanRing.scale.set(ringScale, ringScale, 1);
+                scanRing.material.opacity = Math.max(0, 0.6 - ringScale * 0.1);
+                
+                if (ringScale > 6) { // 8'den 6'ya - daha erken bitiş
+                    clearInterval(ringInterval);
+                    scanRing.scale.set(1, 1, 1);
+                    scanRing.material.opacity = 0;
+                }
+            }, 40); // 50'den 40'a - daha hızlı
+            
+            // Parçacık patlaması (kısa)
+            scanParticles.material.opacity = 0.8; // Daha az yoğun
+            setTimeout(() => {
+                const fadeInterval = setInterval(() => {
+                    scanParticles.material.opacity -= 0.1; // Daha hızlı solar
+                    if (scanParticles.material.opacity <= 0) {
+                        clearInterval(fadeInterval);
+                    }
+                }, 40);
+            }, 300); // 500'den 300'e
+            
+            // Görüş konisi parlama (hafif)
+            visionCone.material.opacity = 0.25; // 0.4'ten 0.25'e
+            setTimeout(() => {
+                visionCone.material.opacity = 0.15;
+            }, 300);
+        }
+        
+        // Tespit Işını Göster
+        function showDetectionBeam(targetPos) {
+            detectionBeam.position.copy(aiEnemy.position);
+            
+            // Işını hedefe yönlendir
+            const direction = new THREE.Vector3().subVectors(targetPos, aiEnemy.position);
+            const length = direction.length();
+            
+            detectionBeam.scale.y = length;
+            detectionBeam.lookAt(targetPos);
+            detectionBeam.rotation.x += Math.PI / 2;
+            
+            // Işını göster
+            detectionBeam.material.opacity = 0.6;
+            
+            // Yanıp sönme efekti
+            let pulseCount = 0;
+            const pulseInterval = setInterval(() => {
+                detectionBeam.material.opacity = detectionBeam.material.opacity === 0.6 ? 0.3 : 0.6;
+                pulseCount++;
+                if (pulseCount > 10) {
+                    clearInterval(pulseInterval);
+                    detectionBeam.material.opacity = 0;
+                }
+            }, 100);
+        }
+        
+        // Trail Efekti Oluştur (Optimize)
+        function addTrailPoint(position, isPlayer = true) {
+            const trailArray = isPlayer ? playerTrail : aiTrail;
+            const color = isPlayer ? 0x0088ff : 0xff0000;
+            
+            // Trail küpü (daha küçük)
+            const trailGeometry = new THREE.BoxGeometry(0.2, 0.2, 0.2);
+            const trailMaterial = new THREE.MeshBasicMaterial({
+                color: color,
+                transparent: true,
+                opacity: 0.4
+            });
+            const trailCube = new THREE.Mesh(trailGeometry, trailMaterial);
+            trailCube.position.copy(position);
+            trailCube.position.y = 0.2;
+            scene.add(trailCube);
+            
+            trailArray.push({
+                mesh: trailCube,
+                life: 40 // 60'tan 40'a azaltıldı
+            });
+            
+            // Eski trail'leri temizle (daha kısa trail)
+            if (trailArray.length > 30) { // 50'den 30'a
+                const old = trailArray.shift();
+                scene.remove(old.mesh);
+            }
+        }
+        
+        // Trail Güncelle (Optimize)
+        function updateTrails() {
+            [playerTrail, aiTrail].forEach(trailArray => {
+                trailArray.forEach((trail, index) => {
+                    trail.life--;
+                    trail.mesh.material.opacity = trail.life / 40 * 0.4;
+                    
+                    if (trail.life <= 0) {
+                        scene.remove(trail.mesh);
+                        trailArray.splice(index, 1);
+                    }
+                });
+            });
+        }
+        
+        // ✨ Kristal Toplama Efekti (Basitleştirilmiş)
+        function createCollectEffect(position) {
+            const particleCount = 10; // 20'den 10'a azaltıldı
+            const particles = [];
+            
+            for (let i = 0; i < particleCount; i++) {
+                const particleGeo = new THREE.SphereGeometry(0.1, 8, 8);
+                const particleMat = new THREE.MeshBasicMaterial({
+                    color: 0xffff00,
+                    transparent: true,
+                    opacity: 1
+                });
+                const particle = new THREE.Mesh(particleGeo, particleMat);
+                
+                particle.position.copy(position);
+                particle.velocity = new THREE.Vector3(
+                    (Math.random() - 0.5) * 0.3,
+                    Math.random() * 0.3,
+                    (Math.random() - 0.5) * 0.3
+                );
+                particle.life = 30;
+                
+                scene.add(particle);
+                particles.push(particle);
+            }
+            
+            // Parçacık animasyonu
+            const updateParticles = () => {
+                particles.forEach((particle, index) => {
+                    particle.position.add(particle.velocity);
+                    particle.velocity.y -= 0.01; // Yerçekimi
+                    particle.material.opacity -= 0.033;
+                    particle.life--;
+                    
+                    if (particle.life <= 0) {
+                        scene.remove(particle);
+                        particles.splice(index, 1);
+                    }
+                });
+                
+                if (particles.length > 0) {
+                    requestAnimationFrame(updateParticles);
+                }
+            };
+            
+            updateParticles();
+        }
+        
+        // 🔮 TAHMİN SİSTEMİ FONKSİYONLARI 🔮
+        
+        // Oyuncu pozisyon geçmişini kaydet
+        function recordPlayerPosition() {
+            const currentPos = {
+                x: player.position.x,
+                z: player.position.z,
+                time: Date.now()
+            };
+            
+            playerPositionHistory.push(currentPos);
+            
+            // Son 10 pozisyonu tut
+            if (playerPositionHistory.length > 10) {
+                playerPositionHistory.shift();
+            }
+            
+            // Hız hesapla
+            if (playerPositionHistory.length >= 2) {
+                const last = playerPositionHistory[playerPositionHistory.length - 1];
+                const prev = playerPositionHistory[playerPositionHistory.length - 2];
+                
+                const velocity = {
+                    x: (last.x - prev.x) / ((last.time - prev.time) / 1000),
+                    z: (last.z - prev.z) / ((last.time - prev.time) / 1000),
+                    time: last.time
+                };
+                
+                playerVelocityHistory.push(velocity);
+                
+                if (playerVelocityHistory.length > 5) {
+                    playerVelocityHistory.shift();
+                }
+            }
+        }
+        
+        // Oyuncunun gelecek pozisyonunu tahmin et
+        function predictPlayerPosition() {
+            if (playerPositionHistory.length < 3) {
+                return null; // Yeterli veri yok
+            }
+            
+            // Ortalama hızı hesapla
+            let avgVelX = 0;
+            let avgVelZ = 0;
+            
+            playerVelocityHistory.forEach(vel => {
+                avgVelX += vel.x;
+                avgVelZ += vel.z;
+            });
+            
+            if (playerVelocityHistory.length > 0) {
+                avgVelX /= playerVelocityHistory.length;
+                avgVelZ /= playerVelocityHistory.length;
+            }
+            
+            // Hızlanma/yavaşlama tespiti
+            let acceleration = { x: 0, z: 0 };
+            if (playerVelocityHistory.length >= 2) {
+                const lastVel = playerVelocityHistory[playerVelocityHistory.length - 1];
+                const prevVel = playerVelocityHistory[playerVelocityHistory.length - 2];
+                const dt = (lastVel.time - prevVel.time) / 1000;
+                
+                if (dt > 0) {
+                    acceleration.x = (lastVel.x - prevVel.x) / dt;
+                    acceleration.z = (lastVel.z - prevVel.z) / dt;
+                }
+            }
+            
+            // Tahmin süresi (3 saniye sonrası)
+            const predictionTime = 3;
+            
+            // Mevcut pozisyon
+            const current = playerPositionHistory[playerPositionHistory.length - 1];
+            
+            // Fizik formülü: s = s0 + v*t + 0.5*a*t^2
+            const predicted = {
+                x: current.x + avgVelX * predictionTime + 0.5 * acceleration.x * predictionTime * predictionTime,
+                z: current.z + avgVelZ * predictionTime + 0.5 * acceleration.z * predictionTime * predictionTime
+            };
+            
+            // Sınırlar içinde tut
+            predicted.x = Math.max(-24, Math.min(24, predicted.x));
+            predicted.z = Math.max(-24, Math.min(24, predicted.z));
+            
+            return predicted;
+        }
+        
+        // Tahmini göster
+        function showPrediction(predicted) {
+            if (!predicted || !predictionMarker) return;
+            
+            predictedPosition = predicted;
+            predictionMarker.position.x = predicted.x;
+            predictionMarker.position.z = predicted.z;
+            
+            // Marker'ı göster
+            predictionMarker.material.opacity = 0.6;
+            predictionMarker.userData.ring.material.opacity = 0.4;
+            
+            console.log(`🔮 AI Tahmini: (${predicted.x.toFixed(1)}, ${predicted.z.toFixed(1)})`);
+        }
+        
+        // Tahmin doğruluğunu kontrol et
+        function checkPredictionAccuracy() {
+            if (!predictedPosition) return;
+            
+            const dx = player.position.x - predictedPosition.x;
+            const dz = player.position.z - predictedPosition.z;
+            const distance = Math.sqrt(dx * dx + dz * dz);
+            
+            totalPredictions++;
+            
+            // 5 birim içindeyse başarılı
+            if (distance < 5) {
+                successfulPredictions++;
+                console.log(`✅ Tahmin başarılı! Mesafe: ${distance.toFixed(2)}`);
+            } else {
+                console.log(`❌ Tahmin başarısız. Mesafe: ${distance.toFixed(2)}`);
+            }
+            
+            predictionAccuracy = (successfulPredictions / totalPredictions * 100).toFixed(1);
+            console.log(`📊 Tahmin Doğruluğu: ${predictionAccuracy}% (${successfulPredictions}/${totalPredictions})`);
+        }
+        
+        // Tahmin marker animasyonu
+        function updatePredictionMarker() {
+            if (!predictionMarker || predictionMarker.material.opacity === 0) return;
+            
+            // Pulse animasyonu
+            predictionMarker.userData.pulse += 0.05;
+            const scale = 1 + Math.sin(predictionMarker.userData.pulse) * 0.2;
+            predictionMarker.scale.set(scale, scale, scale);
+            
+            // Rotasyon
+            predictionMarker.rotation.y += 0.02;
+            predictionMarker.userData.ring.rotation.z += 0.01;
+            
+            // Yavaşça solar
+            if (predictionMarker.material.opacity > 0) {
+                predictionMarker.material.opacity -= 0.002;
+                predictionMarker.userData.ring.material.opacity -= 0.002;
+            }
+        }
 
-        // Kristaller oluştur
+        // Kristaller oluştur (Küçültülmüş alan için)
         function createCollectibles(count) {
             for (let i = 0; i < count; i++) {
                 const geometry = new THREE.OctahedronGeometry(0.5);
@@ -399,9 +894,9 @@
                 });
                 const collectible = new THREE.Mesh(geometry, material);
                 collectible.position.set(
-                    Math.random() * 40 - 20,
+                    Math.random() * 20 - 10,
                     0.5,
-                    Math.random() * 40 - 20
+                    Math.random() * 20 - 10
                 );
                 collectible.castShadow = true;
                 scene.add(collectible);
@@ -409,10 +904,60 @@
             }
             document.getElementById('collectibles').textContent = collectibles.length;
         }
+        
+        // 🎤 AI TAUNT SİSTEMİ
+        async function showAITaunt() {
+            try {
+                const response = await fetch('/api/ai-taunt');
+                const data = await response.json();
+                
+                const tauntBox = document.getElementById('aiTauntBox');
+                tauntBox.textContent = data.taunt;
+                tauntBox.style.display = 'block';
+                
+                // 3 saniye sonra gizle
+                setTimeout(() => {
+                    tauntBox.style.display = 'none';
+                }, 3000);
+                
+                console.log(`🤖 AI Says: "${data.taunt}" (Mood: ${data.mood})`);
+            } catch (error) {
+                console.log('AI taunt error:', error);
+            }
+        }
+        
+        // 💡 GAME TIPS SİSTEMİ
+        async function showGameTip() {
+            try {
+                const response = await fetch('/api/game-tips');
+                const data = await response.json();
+                
+                const tip = data.random_tip;
+                const tipsPanel = document.getElementById('tipsPanel');
+                const tipContent = document.getElementById('tipContent');
+                
+                tipContent.innerHTML = `
+                    <div class="tip-title">${tip.title}</div>
+                    <div>${tip.description}</div>
+                    <div style="margin-top: 5px; color: #ffff00;">⚡ ${tip.tip}</div>
+                `;
+                
+                tipsPanel.style.display = 'block';
+                
+                // 8 saniye sonra gizle
+                setTimeout(() => {
+                    tipsPanel.style.display = 'none';
+                }, 8000);
+                
+            } catch (error) {
+                console.log('Tips error:', error);
+            }
+        }
 
         // AI ekran taraması (Grok-4 Vision API)
         async function performAIScan() {
-            if (!gameActive) return;
+            if (!gameActive) return; // Oyun bittiğinde dur
+            if (aiMode === 'victory') return; // AI kazandığında dur
 
             try {
                 document.getElementById('aiThinking').style.display = 'block';
@@ -439,6 +984,14 @@
                 
                 console.log('✅ API Yanıtı alındı:', data);
                 
+                // ✨ Tarama animasyonu tetikle
+                triggerScanAnimation();
+                
+                // 🔮 Önceki tahmini kontrol et
+                if (predictedPosition) {
+                    checkPredictionAccuracy();
+                }
+                
                 if (data.success && data.analysis) {
                     aiAnalysisData = data.analysis;
                     updateAIStatus(data.analysis);
@@ -447,11 +1000,34 @@
                     const rawResponse = JSON.stringify(data.analysis, null, 2);
                     document.getElementById('rawAiResponse').textContent = rawResponse;
                     
+                    // 🎤 AI Taunt mesajı göster (eğer varsa)
+                    if (data.analysis.taunt) {
+                        const tauntBox = document.getElementById('aiTauntBox');
+                        tauntBox.textContent = data.analysis.taunt;
+                        tauntBox.style.display = 'block';
+                        setTimeout(() => { tauntBox.style.display = 'none'; }, 3000);
+                    }
+                    
                     // AI stratejisini güncelle
                     if (data.analysis.player_detected) {
                         aiMode = 'chase';
                         aiSpeed = 0.12 + (level * 0.02);
                         console.log('🎯 AI oyuncuyu tespit etti! Chase mode aktif.');
+                        
+                        // ✨ Tespit ışını göster
+                        showDetectionBeam(player.position);
+                        
+                        // 🎤 Rastgele AI taunt göster
+                        if (Math.random() < 0.4) { // %40 ihtimalle
+                            setTimeout(() => showAITaunt(), 500);
+                        }
+                        
+                        // 🔮 Yeni tahmin yap
+                        const predicted = predictPlayerPosition();
+                        if (predicted) {
+                            showPrediction(predicted);
+                            aiMode = 'predict'; // Tahmin moduna geç
+                        }
                     } else {
                         aiMode = 'search';
                         aiSpeed = 0.08;
@@ -506,15 +1082,19 @@
                 const response = await fetch('/api/status');
                 const data = await response.json();
                 
-                if (data.status === 'running') {
-                    document.getElementById('apiCallCount').textContent = data.total_api_calls || 0;
-                    document.getElementById('successfulDetections').textContent = data.successful_detections || 0;
-                    document.getElementById('detectionRate').textContent = data.detection_rate || '0%';
+                if (data.status === 'running' && data.statistics) {
+                    // Backend'den gelen statistics objesi
+                    const stats = data.statistics;
                     
-                    console.log('📊 API Stats:', {
-                        calls: data.total_api_calls,
-                        detections: data.successful_detections,
-                        rate: data.detection_rate
+                    document.getElementById('apiCallCount').textContent = stats.total_api_calls || 0;
+                    document.getElementById('successfulDetections').textContent = stats.successful_detections || 0;
+                    document.getElementById('detectionRate').textContent = stats.detection_rate || '0%';
+                    
+                    console.log('📊 API Stats Updated:', {
+                        calls: stats.total_api_calls,
+                        detections: stats.successful_detections,
+                        rate: stats.detection_rate,
+                        strategies: stats.strategies_used
                     });
                 }
             } catch (error) {
@@ -525,26 +1105,47 @@
         // AI hareket (Grok-4 kontrollü)
         function updateAIMovement() {
             if (!gameActive) return;
+            if (aiMode === 'victory') return; // Kazandıysa dur!
 
             const dx = player.position.x - aiEnemy.position.x;
             const dz = player.position.z - aiEnemy.position.z;
             const distance = Math.sqrt(dx * dx + dz * dz);
 
-            if (aiMode === 'chase' && aiAnalysisData?.player_detected) {
-                // AI oyuncuyu tespit etti - takip et!
+            if (aiMode === 'predict' && predictedPosition) {
+                // 🔮 TAHMİN MODUNDA: Tahmini pozisyona git (daha agresif)
+                const pdx = predictedPosition.x - aiEnemy.position.x;
+                const pdz = predictedPosition.z - aiEnemy.position.z;
+                const pdist = Math.sqrt(pdx * pdx + pdz * pdz);
+                
+                if (pdist > 1) {
+                    const dirX = pdx / pdist;
+                    const dirZ = pdz / pdist;
+                    
+                    aiEnemy.position.x += dirX * (aiSpeed * 1.5); // 1.3'ten 1.5'e - çok daha hızlı
+                    aiEnemy.position.z += dirZ * (aiSpeed * 1.5);
+                    
+                    aiEnemy.rotation.y = Math.atan2(dirX, dirZ);
+                }
+                
+                if (Math.random() < 0.1) { // Log azaltıldı
+                    console.log(`🔮 Predict mode: ${pdist.toFixed(1)} birim`);
+                }
+                
+            } else if (aiMode === 'chase' && aiAnalysisData?.player_detected) {
+                // AI oyuncuyu tespit etti - agresif takip!
                 const dirX = dx / distance;
                 const dirZ = dz / distance;
                 
-                aiEnemy.position.x += dirX * aiSpeed;
-                aiEnemy.position.z += dirZ * aiSpeed;
+                aiEnemy.position.x += dirX * (aiSpeed * 1.2); // Normal chase daha hızlı
+                aiEnemy.position.z += dirZ * (aiSpeed * 1.2);
                 
                 aiEnemy.rotation.y = Math.atan2(dirX, dirZ);
             } else {
-                // Rastgele hareket
-                if (Math.random() < 0.02) {
+                // Rastgele hareket (küçültülmüş alan için)
+                if (Math.random() < 0.03) { // 0.02'den 0.03'e - daha aktif hareket
                     aiEnemy.userData = {
-                        targetX: Math.random() * 40 - 20,
-                        targetZ: Math.random() * 40 - 20
+                        targetX: Math.random() * 20 - 10, // 40'tan 20'ye
+                        targetZ: Math.random() * 20 - 10
                     };
                 }
                 
@@ -560,20 +1161,58 @@
                 }
             }
 
-            // Animasyon
-            aiEnemy.position.y = 0.6 + Math.sin(Date.now() * 0.005) * 0.2;
-            aiEnemy.rotation.x = Math.sin(Date.now() * 0.003) * 0.1;
-            aiEnemy.rotation.z = Math.cos(Date.now() * 0.004) * 0.1;
+            // Animasyon (basit)
+            aiEnemy.position.y = 0.6 + Math.sin(Date.now() * 0.005) * 0.15;
+            
+            // ✨ AI trail efekti (daha az sıklıkla)
+            if (Math.random() < 0.1) { // 0.2'den 0.1'e
+                addTrailPoint(aiEnemy.position, false);
+            }
 
             // Çarpışma kontrolü
-            if (distance < 2) {
-                endGame('AI Düşman seni yakaladı!');
+            if (distance < 2 && aiMode !== 'victory') {
+                // 🎯 AI yakalaması animasyonu
+                aiMode = 'victory'; // Özel mod
+                aiSpeed = 0; // Dur!
+                
+                // Yakalanma efekti
+                console.log('🏆 AI KAZANDI! Oyuncu yakalandı!');
+                console.log(`📊 Final Stats: ${score} puan, ${level} seviye, ${90-timeLeft} saniye`);
+                
+                // AI'yı hemen büyüt (zafer pozu)
+                const victoryAnim = setInterval(() => {
+                    if (aiEnemy.scale.x < 1.5) {
+                        aiEnemy.scale.x += 0.05;
+                        aiEnemy.scale.y += 0.05;
+                        aiEnemy.scale.z += 0.05;
+                    } else {
+                        clearInterval(victoryAnim);
+                    }
+                }, 30);
+                
+                // Oyuncuyu küçült (yenilgi)
+                const defeatAnim = setInterval(() => {
+                    if (player.scale.x > 0.3) {
+                        player.scale.x -= 0.05;
+                        player.scale.y -= 0.05;
+                        player.scale.z -= 0.05;
+                    } else {
+                        clearInterval(defeatAnim);
+                    }
+                }, 30);
+                
+                // Kısa bir animasyon sonrası oyunu bitir
+                setTimeout(() => {
+                    endGame('🤖 AI Düşman seni yakaladı!');
+                }, 1000);
             }
         }
 
-        // Oyuncu hareketi
+        // Oyuncu hareketi (hızlandırılmış)
         function updatePlayer() {
-            const moveSpeed = 0.15;
+            const moveSpeed = 0.2; // 0.15'ten 0.2'ye artırıldı
+            
+            const oldPos = player.position.clone();
             
             if (keys['w'] || keys['arrowup']) playerVelocity.z -= moveSpeed;
             if (keys['s'] || keys['arrowdown']) playerVelocity.z += moveSpeed;
@@ -597,14 +1236,22 @@
                 isGrounded = true;
             }
             
-            player.position.x = Math.max(-24, Math.min(24, player.position.x));
-            player.position.z = Math.max(-24, Math.min(24, player.position.z));
+            // Sınırları küçült (25x25 alan)
+            player.position.x = Math.max(-12, Math.min(12, player.position.x));
+            player.position.z = Math.max(-12, Math.min(12, player.position.z));
             
             playerVelocity.x *= 0.85;
             playerVelocity.z *= 0.85;
             
             if (playerVelocity.x !== 0 || playerVelocity.z !== 0) {
                 player.rotation.y = Math.atan2(playerVelocity.x, playerVelocity.z);
+            }
+            
+            // ✨ Oyuncu trail efekti (daha az sıklıkla)
+            const moved = Math.abs(player.position.x - oldPos.x) > 0.01 || 
+                         Math.abs(player.position.z - oldPos.z) > 0.01;
+            if (moved && Math.random() < 0.15) { // 0.3'ten 0.15'e
+                addTrailPoint(player.position, true);
             }
         }
 
@@ -616,6 +1263,9 @@
                 const distance = Math.sqrt(dx * dx + dz * dz);
                 
                 if (distance < 1.5) {
+                    // ✨ Toplama efekti
+                    createCollectEffect(collectible.position);
+                    
                     scene.remove(collectible);
                     score += 10;
                     document.getElementById('score').textContent = score;
@@ -648,9 +1298,26 @@
         // Oyun bitişi
         function endGame(reason) {
             gameActive = false;
+            aiSpeed = 0; // AI'yı durdur
+            aiMode = 'victory'; // Mod değiştir (API çağrıları durur)
+            
+            // AI thinking popup'ını kapat
+            document.getElementById('aiThinking').style.display = 'none';
+            
+            // Son stats güncellemesi
+            updateAPIStats();
+            
             document.getElementById('finalStats').innerHTML = 
-                `${reason}<br>Skor: ${score}<br>Seviye: ${level}`;
+                `${reason}<br><br>📊 Skor: ${score}<br>🎯 Seviye: ${level}<br><br>⏱️ Süre: ${90 - timeLeft} saniye`;
             document.getElementById('gameOver').style.display = 'block';
+            
+            // AI victory animasyonu (eğer AI kazandıysa)
+            if (reason.includes('AI') || reason.includes('yakaladı')) {
+                console.log('🤖 AI WON! Game Over.');
+                console.log('🛑 API çağrıları durduruldu.');
+                // AI'ı büyüt (zafer pozu)
+                aiEnemy.scale.set(1.5, 1.5, 1.5);
+            }
         }
 
         // Yeniden başlat
@@ -671,12 +1338,19 @@
             
             if (gameActive) {
                 updatePlayer();
+                
+                // 🔮 Oyuncu pozisyonunu kaydet (her frame)
+                recordPlayerPosition();
+                
                 updateAIMovement();
                 checkCollectibles();
                 
+                // ✨ Trail efektlerini güncelle
+                updateTrails();
+                
                 // AI tarama zamanı kontrolü
                 const now = Date.now();
-                if (now - lastAiScan > aiScanInterval) {
+                if (now - lastAiScan > aiScanInterval && aiMode !== 'victory') {
                     lastAiScan = now;
                     performAIScan();
                 }
@@ -687,10 +1361,39 @@
                     collectible.position.y = 0.5 + Math.sin(Date.now() * 0.003 + collectible.position.x) * 0.2;
                 });
                 
-                // Kamera takibi
-                camera.position.x += (player.position.x - camera.position.x + 5) * 0.05;
-                camera.position.z += (player.position.z - camera.position.z + 20) * 0.05;
-                camera.lookAt(player.position);
+                // ✨ Görüş konisi animasyonu (chase modunda daha parlak)
+                if (aiMode === 'chase') {
+                    visionCone.material.opacity = 0.2 + Math.sin(Date.now() * 0.005) * 0.1;
+                } else {
+                    visionCone.material.opacity = 0.1;
+                }
+                
+                // ✨ Tarama parçacıkları rotasyonu
+                if (scanParticles) {
+                    scanParticles.rotation.y += 0.01;
+                }
+                
+                // 🔮 Tahmin marker animasyonu
+                if (predictionMarker && predictionMarker.visible) {
+                    // Ring rotasyonu (güvenli kontrol)
+                    if (predictionMarker.children && predictionMarker.children[1]) {
+                        predictionMarker.children[1].rotation.y += 0.02;
+                    }
+                    // Pulse efekti
+                    const scale = 1 + Math.sin(Date.now() * 0.003) * 0.1;
+                    predictionMarker.scale.set(scale, scale, scale);
+                }
+                
+                // Kamera takibi (geniş açı - daha uzak)
+                const targetX = player.position.x;
+                const targetZ = player.position.z;
+                
+                // Geniş görüş için daha yavaş ve uzak takip
+                camera.position.x += (targetX - camera.position.x + 2) * 0.08;
+                camera.position.z += (targetZ - camera.position.z + 12) * 0.08;
+                camera.position.y += (10 - camera.position.y) * 0.05;
+                
+                camera.lookAt(targetX, 0, targetZ);
             }
             
             renderer.render(scene, camera);
@@ -698,6 +1401,12 @@
 
         // Oyunu başlat
         init();
+        
+        // İlk stats güncelleme
+        setTimeout(() => updateAPIStats(), 500);
+        
+        // Periyodik stats güncelleme (her 5 saniyede)
+        setInterval(() => updateAPIStats(), 5000);
         
         // İlk AI taraması
         setTimeout(() => performAIScan(), 2000);
