@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Küp Yakalama Oyunu</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        #gameCanvas {
+            display: block;
+        }
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-size: 18px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            background: rgba(0,0,0,0.3);
+            padding: 15px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+        }
+        #gameOver {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 48px;
+            text-align: center;
+            display: none;
+            background: rgba(0,0,0,0.7);
+            padding: 40px;
+            border-radius: 20px;
+        }
+        #restartBtn {
+            margin-top: 20px;
+            padding: 15px 30px;
+            font-size: 20px;
+            background: #667eea;
+            border: none;
+            color: white;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        #restartBtn:hover {
+            background: #764ba2;
+            transform: scale(1.1);
+        }
+        #instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            text-align: center;
+            background: rgba(0,0,0,0.3);
+            padding: 15px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <div>Skor: <span id="score">0</span></div>
+        <div>Seviye: <span id="level">1</span></div>
+        <div>Zaman: <span id="time">60</span>s</div>
+        <div>AI Düşmanlar: <span id="enemies">3</span></div>
+    </div>
+    
+    <div id="gameOver">
+        <div id="finalScore"></div>
+        <button id="restartBtn">Yeniden Başlat</button>
+    </div>
+    
+    <div id="instructions">
+        🎮 WASD veya Ok Tuşları: Hareket | Space: Zıpla | AI düşmanlardan kaçın ve altın küpleri toplayın!
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Oyun değişkenleri
+        let scene, camera, renderer;
+        let player, enemies = [], collectibles = [];
+        let score = 0, level = 1, timeLeft = 60;
+        let gameActive = true;
+        let keys = {};
+        let playerVelocity = { x: 0, y: 0, z: 0 };
+        const gravity = -0.02;
+        const jumpPower = 0.3;
+        let isGrounded = true;
+
+        // Sahne oluşturma
+        function init() {
+            // Sahne
+            scene = new THREE.Scene();
+            scene.fog = new THREE.Fog(0x667eea, 10, 50);
+
+            // Kamera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 8, 15);
+            camera.lookAt(0, 0, 0);
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.body.appendChild(renderer.domElement);
+
+            // Işıklar
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(10, 20, 10);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
+            scene.add(directionalLight);
+
+            // Zemin
+            const groundGeometry = new THREE.PlaneGeometry(40, 40);
+            const groundMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x2c3e50,
+                roughness: 0.8,
+                metalness: 0.2
+            });
+            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            // Zemin çizgileri (grid)
+            const gridHelper = new THREE.GridHelper(40, 40, 0x3498db, 0x34495e);
+            scene.add(gridHelper);
+
+            // Oyuncu
+            const playerGeometry = new THREE.BoxGeometry(1, 1, 1);
+            const playerMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x3498db,
+                emissive: 0x1a5276,
+                emissiveIntensity: 0.5
+            });
+            player = new THREE.Mesh(playerGeometry, playerMaterial);
+            player.position.set(0, 0.5, 0);
+            player.castShadow = true;
+            scene.add(player);
+
+            // AI Düşmanlar oluştur
+            createEnemies(3);
+
+            // Toplanabilir objeler
+            createCollectibles(5);
+
+            // Event listeners
+            window.addEventListener('keydown', (e) => keys[e.key.toLowerCase()] = true);
+            window.addEventListener('keyup', (e) => keys[e.key.toLowerCase()] = false);
+            window.addEventListener('resize', onWindowResize);
+            document.getElementById('restartBtn').addEventListener('click', restartGame);
+
+            // Zamanlayıcı
+            setInterval(() => {
+                if (gameActive && timeLeft > 0) {
+                    timeLeft--;
+                    document.getElementById('time').textContent = timeLeft;
+                    if (timeLeft === 0) endGame();
+                }
+            }, 1000);
+
+            animate();
+        }
+
+        // AI Düşman oluşturma
+        function createEnemies(count) {
+            for (let i = 0; i < count; i++) {
+                const enemyGeometry = new THREE.BoxGeometry(1, 1, 1);
+                const enemyMaterial = new THREE.MeshStandardMaterial({ 
+                    color: 0xe74c3c,
+                    emissive: 0xc0392b,
+                    emissiveIntensity: 0.5
+                });
+                const enemy = new THREE.Mesh(enemyGeometry, enemyMaterial);
+                enemy.position.set(
+                    Math.random() * 20 - 10,
+                    0.5,
+                    Math.random() * 20 - 10
+                );
+                enemy.castShadow = true;
+                enemy.userData = {
+                    velocity: { x: 0, z: 0 },
+                    speed: 0.05 + level * 0.01,
+                    targetUpdateTime: 0
+                };
+                scene.add(enemy);
+                enemies.push(enemy);
+            }
+            document.getElementById('enemies').textContent = count;
+        }
+
+        // Toplanabilir objeler oluşturma
+        function createCollectibles(count) {
+            for (let i = 0; i < count; i++) {
+                const collectibleGeometry = new THREE.OctahedronGeometry(0.5);
+                const collectibleMaterial = new THREE.MeshStandardMaterial({ 
+                    color: 0xf39c12,
+                    emissive: 0xf39c12,
+                    emissiveIntensity: 0.7,
+                    metalness: 0.8,
+                    roughness: 0.2
+                });
+                const collectible = new THREE.Mesh(collectibleGeometry, collectibleMaterial);
+                collectible.position.set(
+                    Math.random() * 30 - 15,
+                    0.5,
+                    Math.random() * 30 - 15
+                );
+                collectible.castShadow = true;
+                scene.add(collectible);
+                collectibles.push(collectible);
+            }
+        }
+
+        // AI Düşman hareketi (Gelişmiş AI)
+        function updateEnemyAI(enemy, deltaTime) {
+            const userData = enemy.userData;
+            
+            // Hedef güncelleme zamanı
+            userData.targetUpdateTime += deltaTime;
+            
+            if (userData.targetUpdateTime > 30) { // Her 30 frame'de bir yeni hedef
+                userData.targetUpdateTime = 0;
+                
+                // Oyuncuya doğru hareket (takip AI)
+                const dx = player.position.x - enemy.position.x;
+                const dz = player.position.z - enemy.position.z;
+                const distance = Math.sqrt(dx * dx + dz * dz);
+                
+                if (distance > 0.1) {
+                    // Normalize ve hız uygula
+                    userData.velocity.x = (dx / distance) * userData.speed;
+                    userData.velocity.z = (dz / distance) * userData.speed;
+                    
+                    // Bazen rastgele hareket ekle (daha zor olsun)
+                    if (Math.random() < 0.1) {
+                        userData.velocity.x += (Math.random() - 0.5) * 0.02;
+                        userData.velocity.z += (Math.random() - 0.5) * 0.02;
+                    }
+                }
+            }
+            
+            // Hareketi uygula
+            enemy.position.x += userData.velocity.x;
+            enemy.position.z += userData.velocity.z;
+            
+            // Sınır kontrolü
+            enemy.position.x = Math.max(-19, Math.min(19, enemy.position.x));
+            enemy.position.z = Math.max(-19, Math.min(19, enemy.position.z));
+            
+            // Düşmanı oyuncuya doğru döndür
+            enemy.rotation.y = Math.atan2(userData.velocity.x, userData.velocity.z);
+            
+            // Animasyon (yukarı aşağı hareket)
+            enemy.position.y = 0.5 + Math.sin(Date.now() * 0.003 + enemy.position.x) * 0.1;
+        }
+
+        // Oyuncu hareketi
+        function updatePlayer() {
+            const moveSpeed = 0.15;
+            
+            // Hareket
+            if (keys['w'] || keys['arrowup']) {
+                playerVelocity.z -= moveSpeed;
+            }
+            if (keys['s'] || keys['arrowdown']) {
+                playerVelocity.z += moveSpeed;
+            }
+            if (keys['a'] || keys['arrowleft']) {
+                playerVelocity.x -= moveSpeed;
+            }
+            if (keys['d'] || keys['arrowright']) {
+                playerVelocity.x += moveSpeed;
+            }
+            
+            // Zıplama
+            if (keys[' '] && isGrounded) {
+                playerVelocity.y = jumpPower;
+                isGrounded = false;
+            }
+            
+            // Yerçekimi
+            playerVelocity.y += gravity;
+            
+            // Hızı uygula
+            player.position.x += playerVelocity.x;
+            player.position.y += playerVelocity.y;
+            player.position.z += playerVelocity.z;
+            
+            // Zemin kontrolü
+            if (player.position.y <= 0.5) {
+                player.position.y = 0.5;
+                playerVelocity.y = 0;
+                isGrounded = true;
+            }
+            
+            // Sınır kontrolü
+            player.position.x = Math.max(-19, Math.min(19, player.position.x));
+            player.position.z = Math.max(-19, Math.min(19, player.position.z));
+            
+            // Sürtünme
+            playerVelocity.x *= 0.85;
+            playerVelocity.z *= 0.85;
+            
+            // Oyuncu rotasyonu
+            if (playerVelocity.x !== 0 || playerVelocity.z !== 0) {
+                player.rotation.y = Math.atan2(playerVelocity.x, playerVelocity.z);
+            }
+        }
+
+        // Çarpışma kontrolü
+        function checkCollisions() {
+            // Düşmanlarla çarpışma
+            enemies.forEach(enemy => {
+                const dx = player.position.x - enemy.position.x;
+                const dz = player.position.z - enemy.position.z;
+                const distance = Math.sqrt(dx * dx + dz * dz);
+                
+                if (distance < 1.5) {
+                    endGame();
+                }
+            });
+            
+            // Toplanabilir objelerle çarpışma
+            collectibles = collectibles.filter(collectible => {
+                const dx = player.position.x - collectible.position.x;
+                const dz = player.position.z - collectible.position.z;
+                const distance = Math.sqrt(dx * dx + dz * dz);
+                
+                if (distance < 1.5) {
+                    scene.remove(collectible);
+                    score += 10;
+                    document.getElementById('score').textContent = score;
+                    
+                    // Seviye atlama
+                    if (score % 50 === 0) {
+                        levelUp();
+                    }
+                    
+                    return false;
+                }
+                return true;
+            });
+            
+            // Yeni toplanabilir objeler ekle
+            if (collectibles.length < 3) {
+                createCollectibles(2);
+            }
+        }
+
+        // Seviye atlama
+        function levelUp() {
+            level++;
+            document.getElementById('level').textContent = level;
+            timeLeft += 20;
+            
+            // Yeni düşman ekle
+            createEnemies(1);
+            
+            // Mevcut düşmanları hızlandır
+            enemies.forEach(enemy => {
+                enemy.userData.speed += 0.01;
+            });
+        }
+
+        // Oyun bitişi
+        function endGame() {
+            gameActive = false;
+            document.getElementById('finalScore').textContent = 
+                `Oyun Bitti!\nSkor: ${score}\nSeviye: ${level}`;
+            document.getElementById('gameOver').style.display = 'block';
+        }
+
+        // Oyunu yeniden başlat
+        function restartGame() {
+            // Temizle
+            enemies.forEach(enemy => scene.remove(enemy));
+            collectibles.forEach(collectible => scene.remove(collectible));
+            enemies = [];
+            collectibles = [];
+            
+            // Sıfırla
+            score = 0;
+            level = 1;
+            timeLeft = 60;
+            gameActive = true;
+            player.position.set(0, 0.5, 0);
+            playerVelocity = { x: 0, y: 0, z: 0 };
+            
+            // UI güncelle
+            document.getElementById('score').textContent = score;
+            document.getElementById('level').textContent = level;
+            document.getElementById('time').textContent = timeLeft;
+            document.getElementById('gameOver').style.display = 'none';
+            
+            // Yeniden oluştur
+            createEnemies(3);
+            createCollectibles(5);
+        }
+
+        // Pencere boyutu değişimi
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // Animasyon döngüsü
+        let lastTime = Date.now();
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            if (gameActive) {
+                const currentTime = Date.now();
+                const deltaTime = currentTime - lastTime;
+                lastTime = currentTime;
+                
+                updatePlayer();
+                
+                // AI düşmanları güncelle
+                enemies.forEach(enemy => updateEnemyAI(enemy, deltaTime));
+                
+                // Toplanabilir objeler animasyonu
+                collectibles.forEach(collectible => {
+                    collectible.rotation.y += 0.02;
+                    collectible.position.y = 0.5 + Math.sin(Date.now() * 0.003 + collectible.position.x) * 0.2;
+                });
+                
+                checkCollisions();
+                
+                // Kamera takibi (yumuşak)
+                camera.position.x += (player.position.x - camera.position.x + 5) * 0.05;
+                camera.position.z += (player.position.z - camera.position.z + 15) * 0.05;
+                camera.lookAt(player.position);
+            }
+            
+            renderer.render(scene, camera);
+        }
+
+        // Oyunu başlat
+        init();
+    </script>
+</body>
+</html>

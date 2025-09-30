@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Vision Game - Grok-4 Seni Görüyor!</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        }
+        
+        #gameCanvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border-radius: 15px;
+            color: white;
+            font-size: 16px;
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            min-width: 300px;
+        }
+        
+        .ui-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 8px 0;
+            padding: 5px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .ui-label {
+            color: #888;
+        }
+        
+        .ui-value {
+            color: #0ff;
+            font-weight: bold;
+        }
+        
+        #aiStatus {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(139, 0, 0, 0.9);
+            padding: 20px;
+            border-radius: 15px;
+            color: white;
+            max-width: 400px;
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255, 0, 0, 0.3);
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        
+        #aiStatus h3 {
+            color: #ff4444;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .ai-info {
+            margin: 8px 0;
+            font-size: 14px;
+            padding: 5px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 5px;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #ff4444;
+            animation: pulse 1s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        
+        #instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px 30px;
+            border-radius: 10px;
+            color: white;
+            text-align: center;
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        #gameOver {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.95);
+            padding: 50px;
+            border-radius: 20px;
+            text-align: center;
+            color: white;
+            display: none;
+            border: 3px solid #ff4444;
+        }
+        
+        #gameOver h2 {
+            font-size: 48px;
+            color: #ff4444;
+            margin-bottom: 20px;
+        }
+        
+        .btn {
+            padding: 15px 40px;
+            font-size: 18px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 10px;
+            color: white;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: all 0.3s;
+        }
+        
+        .btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 0 30px rgba(102, 126, 234, 0.6);
+        }
+        
+        .warning {
+            color: #ff6b6b;
+            font-weight: bold;
+            animation: blink 1s infinite;
+        }
+        
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        #aiThinking {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            padding: 30px;
+            border-radius: 15px;
+            color: white;
+            display: none;
+            text-align: center;
+            border: 2px solid #0ff;
+        }
+        
+        .loader {
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-top: 4px solid #0ff;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <h2 style="margin-bottom: 15px; color: #0ff;">🎮 Oyun Durumu</h2>
+        <div class="ui-row">
+            <span class="ui-label">Skor:</span>
+            <span class="ui-value" id="score">0</span>
+        </div>
+        <div class="ui-row">
+            <span class="ui-label">Seviye:</span>
+            <span class="ui-value" id="level">1</span>
+        </div>
+        <div class="ui-row">
+            <span class="ui-label">Zaman:</span>
+            <span class="ui-value" id="time">60</span>s
+        </div>
+        <div class="ui-row">
+            <span class="ui-label">Kristaller:</span>
+            <span class="ui-value" id="collectibles">5</span>
+        </div>
+    </div>
+    
+    <div id="aiStatus">
+        <h3>
+            <span class="status-indicator"></span>
+            🤖 AI Düşman (Grok-4)
+        </h3>
+        <div class="ai-info">
+            <strong>Durum:</strong> <span id="aiState">Arama modunda...</span>
+        </div>
+        <div class="ai-info">
+            <strong>Tespit:</strong> <span id="aiDetection" class="warning">Seni arıyor...</span>
+        </div>
+        <div class="ai-info">
+            <strong>Strateji:</strong> <span id="aiStrategy">Rastgele hareket</span>
+        </div>
+        <div class="ai-info">
+            <strong>Güven:</strong> <span id="aiConfidence">0%</span>
+        </div>
+        <div class="ai-info">
+            <strong>Son Analiz:</strong> <span id="lastScan">Henüz tarama yapılmadı</span>
+        </div>
+        
+        <hr style="margin: 15px 0; border: 1px solid rgba(255,255,255,0.2);">
+        
+        <div style="background: rgba(0,0,0,0.5); padding: 10px; border-radius: 5px; margin-top: 10px;">
+            <strong style="color: #0ff;">📊 Gerçek API Stats:</strong>
+            <div class="ai-info" style="margin-top: 5px;">
+                <strong>API Çağrıları:</strong> <span id="apiCallCount">0</span>
+            </div>
+            <div class="ai-info">
+                <strong>Başarılı Tespit:</strong> <span id="successfulDetections">0</span>
+            </div>
+            <div class="ai-info">
+                <strong>Tespit Oranı:</strong> <span id="detectionRate">0%</span>
+            </div>
+            <div class="ai-info">
+                <strong>Son AI Yanıtı:</strong> 
+                <div id="rawAiResponse" style="font-size: 11px; color: #aaa; margin-top: 5px; max-height: 100px; overflow-y: auto; white-space: pre-wrap;">Bekleniyor...</div>
+            </div>
+        </div>
+        
+        <div class="ai-info" style="margin-top: 15px; font-size: 12px; color: #aaa;">
+            💡 AI her 5 saniyede oyun ekranını görür ve seni analiz eder!<br>
+            🔍 Yukarıdaki sayılar gerçek API çağrılarını gösterir!
+        </div>
+    </div>
+    
+    <div id="instructions">
+        <strong>🎮 Kontroller:</strong> WASD - Hareket | Space - Zıpla | ESC - Duraklat<br>
+        <span style="color: #ff6b6b;">⚠️ DİKKAT: AI düşman gerçekten oyun ekranını görebilir ve seni takip eder!</span>
+    </div>
+    
+    <div id="gameOver">
+        <h2>🎮 Oyun Bitti!</h2>
+        <div id="finalStats" style="margin: 20px 0; font-size: 24px;"></div>
+        <button class="btn" onclick="restartGame()">🔄 Yeniden Başlat</button>
+    </div>
+    
+    <div id="aiThinking">
+        <h3>🤖 AI Analiz Yapıyor...</h3>
+        <div class="loader"></div>
+        <p>Grok-4 oyun ekranını inceliyor...</p>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Oyun değişkenleri
+        let scene, camera, renderer;
+        let player, aiEnemy, collectibles = [];
+        let score = 0, level = 1, timeLeft = 60;
+        let gameActive = true;
+        let keys = {};
+        let playerVelocity = { x: 0, y: 0, z: 0 };
+        const gravity = -0.02;
+        const jumpPower = 0.3;
+        let isGrounded = true;
+        let aiScanInterval = 5000; // 5 saniye
+        let lastAiScan = 0;
+        let aiAnalysisData = null;
+
+        // AI durumu
+        let aiMode = 'search'; // search, chase, hunt
+        let aiSpeed = 0.08;
+
+        // Sahne oluştur
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0a1a);
+            scene.fog = new THREE.Fog(0x0a0a1a, 10, 50);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 10, 20);
+            camera.lookAt(0, 0, 0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.body.appendChild(renderer.domElement);
+
+            // Işıklar
+            const ambientLight = new THREE.AmbientLight(0x404060, 0.6);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(10, 20, 10);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
+            scene.add(directionalLight);
+
+            // Nokta ışık (AI düşman için)
+            const pointLight = new THREE.PointLight(0xff0000, 1, 20);
+            scene.add(pointLight);
+            pointLight.position.set(0, 2, 0);
+
+            // Zemin
+            const groundGeometry = new THREE.PlaneGeometry(50, 50);
+            const groundMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x1a1a2e,
+                roughness: 0.8,
+                metalness: 0.2
+            });
+            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            const gridHelper = new THREE.GridHelper(50, 50, 0x00ffff, 0x003344);
+            scene.add(gridHelper);
+
+            // Oyuncu (MAVİ KÜP - AI bunu arayacak!)
+            const playerGeometry = new THREE.BoxGeometry(1, 1, 1);
+            const playerMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x0088ff,
+                emissive: 0x0044aa,
+                emissiveIntensity: 0.5
+            });
+            player = new THREE.Mesh(playerGeometry, playerMaterial);
+            player.position.set(0, 0.5, 0);
+            player.castShadow = true;
+            scene.add(player);
+
+            // AI Düşman (KIRMIZI KÜP - Grok-4 kontrol eder!)
+            const aiGeometry = new THREE.BoxGeometry(1.2, 1.2, 1.2);
+            const aiMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0xff0000,
+                emissive: 0xaa0000,
+                emissiveIntensity: 0.8
+            });
+            aiEnemy = new THREE.Mesh(aiGeometry, aiMaterial);
+            aiEnemy.position.set(15, 0.6, 15);
+            aiEnemy.castShadow = true;
+            scene.add(aiEnemy);
+
+            // Kristaller
+            createCollectibles(5);
+
+            // Event listeners
+            window.addEventListener('keydown', (e) => keys[e.key.toLowerCase()] = true);
+            window.addEventListener('keyup', (e) => keys[e.key.toLowerCase()] = false);
+            window.addEventListener('resize', onWindowResize);
+
+            // Zamanlayıcı
+            setInterval(() => {
+                if (gameActive && timeLeft > 0) {
+                    timeLeft--;
+                    document.getElementById('time').textContent = timeLeft;
+                    if (timeLeft === 0) endGame('Zaman doldu!');
+                }
+            }, 1000);
+
+            animate();
+        }
+
+        // Kristaller oluştur
+        function createCollectibles(count) {
+            for (let i = 0; i < count; i++) {
+                const geometry = new THREE.OctahedronGeometry(0.5);
+                const material = new THREE.MeshStandardMaterial({ 
+                    color: 0xffff00,
+                    emissive: 0xffaa00,
+                    emissiveIntensity: 1,
+                    metalness: 0.8,
+                    roughness: 0.2
+                });
+                const collectible = new THREE.Mesh(geometry, material);
+                collectible.position.set(
+                    Math.random() * 40 - 20,
+                    0.5,
+                    Math.random() * 40 - 20
+                );
+                collectible.castShadow = true;
+                scene.add(collectible);
+                collectibles.push(collectible);
+            }
+            document.getElementById('collectibles').textContent = collectibles.length;
+        }
+
+        // AI ekran taraması (Grok-4 Vision API)
+        async function performAIScan() {
+            if (!gameActive) return;
+
+            try {
+                document.getElementById('aiThinking').style.display = 'block';
+                
+                // Canvas'tan screenshot al
+                const screenshot = renderer.domElement.toDataURL('image/png');
+                
+                console.log('🔍 AI Scan başlatılıyor...');
+                console.log('📸 Screenshot boyutu:', screenshot.length, 'bytes');
+                
+                // Backend'e gönder
+                const response = await fetch('/api/analyze', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        image: screenshot
+                    })
+                });
+
+                const data = await response.json();
+                document.getElementById('aiThinking').style.display = 'none';
+                
+                console.log('✅ API Yanıtı alındı:', data);
+                
+                if (data.success && data.analysis) {
+                    aiAnalysisData = data.analysis;
+                    updateAIStatus(data.analysis);
+                    
+                    // Gerçek API yanıtını göster
+                    const rawResponse = JSON.stringify(data.analysis, null, 2);
+                    document.getElementById('rawAiResponse').textContent = rawResponse;
+                    
+                    // AI stratejisini güncelle
+                    if (data.analysis.player_detected) {
+                        aiMode = 'chase';
+                        aiSpeed = 0.12 + (level * 0.02);
+                        console.log('🎯 AI oyuncuyu tespit etti! Chase mode aktif.');
+                    } else {
+                        aiMode = 'search';
+                        aiSpeed = 0.08;
+                        console.log('🔍 AI oyuncuyu bulamadı. Search mode aktif.');
+                    }
+                } else if (data.error) {
+                    console.error('❌ API Hatası:', data.error);
+                    document.getElementById('rawAiResponse').textContent = `ERROR: ${data.error}`;
+                }
+                
+                // API stats güncelle
+                updateAPIStats();
+                
+                document.getElementById('lastScan').textContent = new Date().toLocaleTimeString();
+                
+            } catch (error) {
+                console.error('AI Scan Error:', error);
+                document.getElementById('aiThinking').style.display = 'none';
+                document.getElementById('aiState').textContent = 'Bağlantı hatası';
+            }
+        }
+
+        // AI durumunu güncelle
+        function updateAIStatus(analysis) {
+            if (analysis.player_detected) {
+                document.getElementById('aiDetection').innerHTML = 
+                    `<span class="warning">⚠️ SENİ BULDU!</span>`;
+                document.getElementById('aiDetection').style.color = '#ff0000';
+            } else {
+                document.getElementById('aiDetection').textContent = 'Seni aramaya devam ediyor...';
+                document.getElementById('aiDetection').style.color = '#ffaa00';
+            }
+            
+            document.getElementById('aiState').textContent = 
+                analysis.player_detected ? 'TAKİP MODUNDA!' : 'Arama modunda...';
+            
+            document.getElementById('aiStrategy').textContent = 
+                analysis.strategy || 'Rastgele hareket';
+            
+            document.getElementById('aiConfidence').textContent = 
+                `${analysis.confidence || 0}%`;
+            
+            // Reasoning göster (eğer varsa)
+            if (analysis.reasoning) {
+                console.log('🧠 AI Reasoning:', analysis.reasoning);
+            }
+        }
+        
+        // API istatistiklerini güncelle
+        async function updateAPIStats() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                
+                if (data.status === 'running') {
+                    document.getElementById('apiCallCount').textContent = data.total_api_calls || 0;
+                    document.getElementById('successfulDetections').textContent = data.successful_detections || 0;
+                    document.getElementById('detectionRate').textContent = data.detection_rate || '0%';
+                    
+                    console.log('📊 API Stats:', {
+                        calls: data.total_api_calls,
+                        detections: data.successful_detections,
+                        rate: data.detection_rate
+                    });
+                }
+            } catch (error) {
+                console.error('Stats güncelleme hatası:', error);
+            }
+        }
+
+        // AI hareket (Grok-4 kontrollü)
+        function updateAIMovement() {
+            if (!gameActive) return;
+
+            const dx = player.position.x - aiEnemy.position.x;
+            const dz = player.position.z - aiEnemy.position.z;
+            const distance = Math.sqrt(dx * dx + dz * dz);
+
+            if (aiMode === 'chase' && aiAnalysisData?.player_detected) {
+                // AI oyuncuyu tespit etti - takip et!
+                const dirX = dx / distance;
+                const dirZ = dz / distance;
+                
+                aiEnemy.position.x += dirX * aiSpeed;
+                aiEnemy.position.z += dirZ * aiSpeed;
+                
+                aiEnemy.rotation.y = Math.atan2(dirX, dirZ);
+            } else {
+                // Rastgele hareket
+                if (Math.random() < 0.02) {
+                    aiEnemy.userData = {
+                        targetX: Math.random() * 40 - 20,
+                        targetZ: Math.random() * 40 - 20
+                    };
+                }
+                
+                if (aiEnemy.userData) {
+                    const tdx = aiEnemy.userData.targetX - aiEnemy.position.x;
+                    const tdz = aiEnemy.userData.targetZ - aiEnemy.position.z;
+                    const tdist = Math.sqrt(tdx * tdx + tdz * tdz);
+                    
+                    if (tdist > 0.5) {
+                        aiEnemy.position.x += (tdx / tdist) * aiSpeed;
+                        aiEnemy.position.z += (tdz / tdist) * aiSpeed;
+                    }
+                }
+            }
+
+            // Animasyon
+            aiEnemy.position.y = 0.6 + Math.sin(Date.now() * 0.005) * 0.2;
+            aiEnemy.rotation.x = Math.sin(Date.now() * 0.003) * 0.1;
+            aiEnemy.rotation.z = Math.cos(Date.now() * 0.004) * 0.1;
+
+            // Çarpışma kontrolü
+            if (distance < 2) {
+                endGame('AI Düşman seni yakaladı!');
+            }
+        }
+
+        // Oyuncu hareketi
+        function updatePlayer() {
+            const moveSpeed = 0.15;
+            
+            if (keys['w'] || keys['arrowup']) playerVelocity.z -= moveSpeed;
+            if (keys['s'] || keys['arrowdown']) playerVelocity.z += moveSpeed;
+            if (keys['a'] || keys['arrowleft']) playerVelocity.x -= moveSpeed;
+            if (keys['d'] || keys['arrowright']) playerVelocity.x += moveSpeed;
+            
+            if (keys[' '] && isGrounded) {
+                playerVelocity.y = jumpPower;
+                isGrounded = false;
+            }
+            
+            playerVelocity.y += gravity;
+            
+            player.position.x += playerVelocity.x;
+            player.position.y += playerVelocity.y;
+            player.position.z += playerVelocity.z;
+            
+            if (player.position.y <= 0.5) {
+                player.position.y = 0.5;
+                playerVelocity.y = 0;
+                isGrounded = true;
+            }
+            
+            player.position.x = Math.max(-24, Math.min(24, player.position.x));
+            player.position.z = Math.max(-24, Math.min(24, player.position.z));
+            
+            playerVelocity.x *= 0.85;
+            playerVelocity.z *= 0.85;
+            
+            if (playerVelocity.x !== 0 || playerVelocity.z !== 0) {
+                player.rotation.y = Math.atan2(playerVelocity.x, playerVelocity.z);
+            }
+        }
+
+        // Kristal toplama
+        function checkCollectibles() {
+            collectibles = collectibles.filter(collectible => {
+                const dx = player.position.x - collectible.position.x;
+                const dz = player.position.z - collectible.position.z;
+                const distance = Math.sqrt(dx * dx + dz * dz);
+                
+                if (distance < 1.5) {
+                    scene.remove(collectible);
+                    score += 10;
+                    document.getElementById('score').textContent = score;
+                    
+                    if (score % 50 === 0) {
+                        levelUp();
+                    }
+                    
+                    return false;
+                }
+                return true;
+            });
+            
+            document.getElementById('collectibles').textContent = collectibles.length;
+            
+            if (collectibles.length < 3) {
+                createCollectibles(2);
+            }
+        }
+
+        // Seviye atlama
+        function levelUp() {
+            level++;
+            document.getElementById('level').textContent = level;
+            timeLeft += 20;
+            aiSpeed += 0.02;
+            aiScanInterval = Math.max(3000, aiScanInterval - 500); // AI daha sık tarar
+        }
+
+        // Oyun bitişi
+        function endGame(reason) {
+            gameActive = false;
+            document.getElementById('finalStats').innerHTML = 
+                `${reason}<br>Skor: ${score}<br>Seviye: ${level}`;
+            document.getElementById('gameOver').style.display = 'block';
+        }
+
+        // Yeniden başlat
+        function restartGame() {
+            location.reload();
+        }
+
+        // Pencere boyutu
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // Ana animasyon döngüsü
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            if (gameActive) {
+                updatePlayer();
+                updateAIMovement();
+                checkCollectibles();
+                
+                // AI tarama zamanı kontrolü
+                const now = Date.now();
+                if (now - lastAiScan > aiScanInterval) {
+                    lastAiScan = now;
+                    performAIScan();
+                }
+                
+                // Kristal animasyonu
+                collectibles.forEach(collectible => {
+                    collectible.rotation.y += 0.02;
+                    collectible.position.y = 0.5 + Math.sin(Date.now() * 0.003 + collectible.position.x) * 0.2;
+                });
+                
+                // Kamera takibi
+                camera.position.x += (player.position.x - camera.position.x + 5) * 0.05;
+                camera.position.z += (player.position.z - camera.position.z + 20) * 0.05;
+                camera.lookAt(player.position);
+            }
+            
+            renderer.render(scene, camera);
+        }
+
+        // Oyunu başlat
+        init();
+        
+        // İlk AI taraması
+        setTimeout(() => performAIScan(), 2000);
+    </script>
+</body>
+</html>
