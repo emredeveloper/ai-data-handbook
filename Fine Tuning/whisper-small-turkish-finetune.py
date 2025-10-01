@@ -734,6 +734,17 @@ class ProgressCallback(EarlyStoppingCallback):
         self.logger.log(f"En iyi WER: {self.best_metric:.4f}")
 
 def main():
+    # PyTorch matmul precision (TF32) - Ampere/Ada GPU'larda hız kazandırır
+    try:
+        torch.set_float32_matmul_precision("high")
+    except Exception:
+        pass
+    # CUDNN autotune (değişken input boyutlarında hız)
+    try:
+        import torch.backends.cudnn as cudnn
+        cudnn.benchmark = True
+    except Exception:
+        pass
     # Logger başlat
     logger = TrainingLogger(output_dir="./whisper-small-turkish-khanacademy")
     
@@ -822,7 +833,7 @@ def main():
             text_column="transcription",  # Khan Academy dataseti için
             audio_column="audio",
             min_duration=5.0,    # En az 5 saniye
-            max_duration=40.0,   # En fazla 40 saniye (güncellendi)
+            max_duration=30.0,   # En fazla 30 saniye (hız için)
             min_text_length=5,   # En az 5 karakter
             max_text_length=500,  # En fazla 500 karakter
             sample_size=3000  # Hız için 3000 örnek kontrol et
@@ -835,7 +846,7 @@ def main():
             text_column="transcription",
             audio_column="audio",
             min_duration=5.0,    # En az 5 saniye
-            max_duration=40.0,   # En fazla 40 saniye (güncellendi)
+            max_duration=30.0,   # En fazla 30 saniye (hız için)
             min_text_length=5,   # En az 5 karakter
             max_text_length=500,  # En fazla 500 karakter
             sample_size=500  # Validation küçük, 500 yeterli
@@ -867,7 +878,7 @@ def main():
     
     # SÜRESİ 5-40 SANİYE ARASINDA OLMAYAN ÖRNEKLERİ FİLTRELE
     # Bu filtreleme her zaman yapılır (cache kullanılsa bile)
-    print("\n🔍 Ses süresi filtresi uygulanıyor (5-40 saniye)...")
+    print("\n🔍 Ses süresi filtresi uygulanıyor (5-30 saniye)...")
     
     def filter_by_duration(dataset, min_dur=5.0, max_dur=40.0, show_progress=True):
         """Süre bazlı filtreleme"""
@@ -895,8 +906,13 @@ def main():
     train_before = len(dataset['train'])
     val_before = len(dataset['validation'])
     
-    dataset['train'], train_filtered = filter_by_duration(dataset['train'], 5.0, 40.0)
-    dataset['validation'], val_filtered = filter_by_duration(dataset['validation'], 5.0, 40.0)
+    dataset['train'], train_filtered = filter_by_duration(dataset['train'], 5.0, 30.0)
+    dataset['validation'], val_filtered = filter_by_duration(dataset['validation'], 5.0, 30.0)
+    
+    # Eval hızı için validation set'ini küçült (ilk 200 örnek)
+    if len(dataset['validation']) > 200:
+        dataset['validation'] = dataset['validation'].select(range(200))
+        print(f"✅ Validation set küçültüldü: 200 örnek (eval hızı için)")
     
     print(f"✅ Train: {train_filtered} örnek filtrelendi ({train_before} → {len(dataset['train'])})")
     print(f"✅ Validation: {val_filtered} örnek filtrelendi ({val_before} → {len(dataset['validation'])})")
@@ -913,9 +929,13 @@ def main():
         task="transcribe"
     )
 
-    model = WhisperForConditionalGeneration.from_pretrained("openai/whisper-small")
-    model.config.forced_decoder_ids = processor.get_decoder_prompt_ids(language="Turkish", task="transcribe")
-    model.config.suppress_tokens = []
+    # SDPA (Scaled Dot-Product Attention) ile yükle (Transformers >= 4.36)
+    model = WhisperForConditionalGeneration.from_pretrained(
+        "openai/whisper-small",
+        attn_implementation="sdpa"
+    )
+    # Forced decoder ids ve suppress_tokens'u model config'te elle set etmiyoruz;
+    # dil ve görev ayarları processor ile sağlanır (deprecated uyarıları önlemek için)
 
     # Modeli GPU'ya taşı
     model.to(device)
@@ -1007,30 +1027,30 @@ def main():
     # Training arguments
     training_args = Seq2SeqTrainingArguments(
         output_dir="./whisper-small-turkish-khanacademy",
-        per_device_train_batch_size=8 if device == "cuda" else 2,  # GPU için 8, CPU için 2
-        per_device_eval_batch_size=4 if device == "cuda" else 1,   # GPU için 4, CPU için 1
-        gradient_accumulation_steps=2,  # Efektif batch size: 16 (GPU) veya 4 (CPU)
-        learning_rate=1e-5,
-        warmup_steps=500,
-        max_steps=4000,  # Maksimum 4000 step, early stopping ile daha erken durabilir
+        per_device_train_batch_size=20 if device == "cuda" else 2,  # GPU için 20 (8GB %90 kullanım), CPU için 2
+        per_device_eval_batch_size=16 if device == "cuda" else 1,   # GPU için 16 (8GB %90 kullanım), CPU için 1
+        gradient_accumulation_steps=1,  # Daha çok GPU kullanımı (efektif batch=12)
+        learning_rate=5e-6,
+        warmup_steps=50,
+        max_steps=10,  # Maksimum 10 step (çok hızlı test için)
         lr_scheduler_type="cosine",  # ⭐ Cosine decay: daha iyi yakınsama
         warmup_ratio=0.0,  # warmup_steps kullanıyoruz
-        gradient_checkpointing=(device == "cuda"),  # CPU'da kapat (checkpoint backward hatasını önle)
+        gradient_checkpointing=False,  # Checkpointing kapalı (backward hatasını önler)
         fp16=device == "cuda",  # GPU'da mixed precision training - %50 bellek tasarrufu
-        eval_strategy="steps",
-        eval_steps=500,  # Her 500 step'te bir değerlendirme
-        save_steps=500,  # Her 500 step'te bir checkpoint kaydet
-        logging_steps=100,  # Her 100 step'te bir log kaydet
+        eval_strategy="steps",  # Eval'i aç ama hata düzeltildi
+        eval_steps=5,  # Her 5 step'te bir değerlendirme (10 step için uygun)
+        save_steps=100,  # Sadece final checkpoint
+        logging_steps=2,  # Her 2 step'te bir log (10 step için uygun)
         report_to=["tensorboard"],
-        load_best_model_at_end=True,  # Eğitim sonunda en iyi modeli yükle
-        metric_for_best_model="wer",  # En iyi model WER'e göre seçilir
+        load_best_model_at_end=True,  # En iyi modeli yükle
+        metric_for_best_model="wer",  # WER'e göre en iyi model
         greater_is_better=False,  # WER için düşük daha iyi
-        predict_with_generate=True,  # Değerlendirmede generate kullan
+        predict_with_generate=True,  # Eval'da generate kullan
         generation_max_length=225,  # Maksimum 225 token generate et
         
-        # ⭐ GENERATION KALİTE İYİLEŞTİRMELERİ (Whisper best practices)
-        generation_num_beams=5,  # Beam search: 5 farklı yol dene (kalite artışı)
-        generation_config=None,  # Manuel config için (aşağıda ayarlanacak)
+        # ⭐ GENERATION KALİTE İYİLEŞTİRMELERİ (eval'da greedy kullanım)
+        generation_num_beams=1,  # Eval'da beam kapalı (greedy)
+        generation_config=None,  # Manuel config (aşağıda ayarlanacak)
         
         push_to_hub=False,
         seed=42,
@@ -1041,8 +1061,9 @@ def main():
         # Bellek optimizasyonları
         optim="adamw_torch",  # Varsayılan optimizer, bellek verimliliği için
         max_grad_norm=1.0,  # Gradient clipping - gradient patlamasını önler
-        dataloader_num_workers=0,  # Windows için 0, Linux/Mac'te 2-4 olabilir
+        dataloader_num_workers=4 if device == "cuda" else 0,  # GPU'da daha fazla I/O hızlandırma (2→4)
         dataloader_pin_memory=True if device == "cuda" else False,  # GPU için bellek optimizasyonu
+        dataloader_prefetch_factor=4 if device == "cuda" else None,  # Daha fazla önceden yükleme (2→4)
         ddp_find_unused_parameters=False,  # Distributed training için bellek tasarrufu
         save_total_limit=2,  # Sadece son 2 checkpoint'i sakla - disk alanı tasarrufu
         remove_unused_columns=True,  # Kullanılmayan sütunları kaldır
@@ -1053,18 +1074,30 @@ def main():
     
     generation_config = GenerationConfig(
         max_length=448,              # Whisper max decoder length
-        num_beams=5,                 # Beam search: 5 yol
+        num_beams=1,                 # Eval'da greedy (beam kapalı)
         length_penalty=1.0,          # Uzunluk cezası (1.0=nötr)
-        no_repeat_ngram_size=3,      # 3-gram tekrarını engelle
-        repetition_penalty=1.2,      # Tekrar cezası (>1: tekrarı azalt)
+        no_repeat_ngram_size=0,      # hız için kapalı
+        repetition_penalty=1.0,      # hız için kapalı
         # temperature parametresi sadece sampling ile kullanılır; beam search'te kaldırıldı
-        do_sample=False,             # Beam search için False
-        early_stopping=True,         # EOS görünce dur
-        # Whisper'a özel
-        forced_decoder_ids=model.config.forced_decoder_ids,
-        suppress_tokens=model.config.suppress_tokens,
-        begin_suppress_tokens=model.config.begin_suppress_tokens,
+        do_sample=False,             # Greedy
+        # early_stopping yalnızca beam aramada kullanılır; greedy'de kaldırıldı
     )
+
+    # Whisper generate için başlangıç prompt'u zorunlu; Trainer eval'da generate çağırırken gereklidir
+    try:
+        prompt_ids = processor.get_decoder_prompt_ids(
+            language="Turkish", task="transcribe", no_timestamps=True
+        )
+        # Generate için başlangıç prompt'u hem generation_config'e hem model.config'e yaz
+        generation_config.forced_decoder_ids = prompt_ids
+        generation_config.return_timestamps = False
+        model.config.forced_decoder_ids = prompt_ids
+        # Eğitimde cache kapat (öneri) ve timestamps kapat
+        model.config.use_cache = False
+        if hasattr(model.config, "return_timestamps"):
+            model.config.return_timestamps = False
+    except Exception:
+        pass
     
     # Model'e ata
     model.generation_config = generation_config

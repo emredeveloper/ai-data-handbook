@@ -63,24 +63,33 @@ def patched_decode_example(self, value, token_per_repo_id=None):
 audio_module.Audio.decode_example = patched_decode_example
 print("✅ Audio decoder başarıyla patch'lendi (soundfile/librosa kullanılacak)")
 
-# Veri setini yükle
-print("📦 Veri seti yükleniyor...")
-dataset = datasets.load_dataset("ysdede/khanacademy-turkish", split="train")
+print("📦 Yerel dosya kontrol ediliyor...")
+local_audio_path = os.path.join(os.path.dirname(__file__), "iphone-air.mp3")
 
-# Audio'yu 16kHz'e ayarla (Whisper için)
-dataset = dataset.cast_column("audio", Audio(sampling_rate=16000))
-
-# İlk örneği al (datasets otomatik decode eder)
-print("\n🎵 İlk ses dosyası bilgileri:")
-example = dataset[0]
-print(f"Metin: {example['transcription'][:100]}...")
-
-# Audio bilgilerini al (datasets tarafından decode edilmiş)
-audio_info = example['audio']
-audio_array = audio_info['array']
-sampling_rate = audio_info['sampling_rate']
-
-print(f"Path: {audio_info.get('path', 'cache içinde')}")
+if os.path.exists(local_audio_path):
+    print(f"\n🎵 Yerel dosya bulundu: {local_audio_path}")
+    # Librosa ile 16kHz mono decode et
+    audio_array, sampling_rate = librosa.load(local_audio_path, sr=16000, mono=True)
+    print("\n✅ Yerel dosya decode edildi (librosa, 16kHz mono)")
+    source_info = {"path": local_audio_path}
+else:
+    # Dataset'e geri düş
+    print("📦 Veri seti yükleniyor...")
+    dataset = datasets.load_dataset("ysdede/khanacademy-turkish", split="train")
+    # Audio'yu 16kHz'e ayarla (Whisper için)
+    dataset = dataset.cast_column("audio", Audio(sampling_rate=16000))
+    # İlk örneği al (datasets otomatik decode eder)
+    print("\n🎵 İlk ses dosyası bilgileri:")
+    example = dataset[0]
+    print(f"Metin: {example['transcription'][:100]}...")
+    # Audio bilgilerini al (datasets tarafından decode edilmiş)
+    audio_info = example['audio']
+    audio_array = audio_info['array']
+    sampling_rate = audio_info['sampling_rate']
+    print(f"Path: {audio_info.get('path', 'cache içinde')}")
+    print("\n✅ Datasets tarafından otomatik decode edildi!")
+    source_info = audio_info
+print(f"Path: {source_info.get('path', 'yerel dosya')}" )
 print("\n✅ Datasets tarafından otomatik decode edildi!")
 
 # Çıktıları göster
