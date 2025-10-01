@@ -70,6 +70,11 @@ Fine Tuning/whisper-small-turkish/
 # Data files
 Classification/*.csv
 
+# General data files (hide all CSV/JSON)
+*.csv
+*.json
+*.txt
+
 # RAG & Vector Store
 # FAISS index dosyaları
 *.index
