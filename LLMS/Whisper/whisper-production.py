@@ -36,12 +36,10 @@ class WhisperTurkishASR:
     def _default_config(self):
         """Default konfigürasyon"""
         return {
-            "name": "Default - Few-Shot Long + Beam Search",
-            "use_prompt": True,
-            "prompt_type": "long",
-            "prompt_text": """
-Yerin yakınında yer çekimi ivmesi 9,8 metre bölü saniye kare ve aşağı yönlüdür. Bu, Newton'ın evrensel çekim yasasından türetilmiştir. Newton'ın birinci kanununa göre, bir cisim üzerine net kuvvet etki etmiyorsa o cismin hızı sabittir. Sabit hız derken, hem büyüklük hem de yön olarak sabit olduğunu kastediyoruz. İkinci kanunda ise net kuvvet kütle ile ivmenin çarpımına eşittir. Dolayısıyla, bir cisme etki eden kuvvet arttıkça ivme de artar. Kompozisyonda yer alan her bir öğe, kabın formunun yuvarlak olması ile uyum sağlayacak şekilde yerleştirilmiştir.
-""",
+            "name": "Default - Turkish ASR (No Prompt)",
+            "use_prompt": False,
+            "prompt_type": None,
+            "prompt_text": "",
             "generation_params": {
                 "max_length": 448,
                 "language": "tr",

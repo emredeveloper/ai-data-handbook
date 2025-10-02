@@ -210,18 +210,8 @@ def transcribe_with_whisper(audio_path, config_path="whisper_best_config.json", 
         
         gen_kwargs = config["generation_params"].copy()
         
-        if config.get("use_prompt") and config.get("prompt_text"):
-            prompt_ids = processor.get_prompt_ids(
-                config["prompt_text"].strip(), 
-                return_tensors="pt"
-            )
-            generated_ids = model.generate(
-                input_features,
-                prompt_ids=prompt_ids.to(device),
-                **gen_kwargs
-            )
-        else:
-            generated_ids = model.generate(input_features, **gen_kwargs)
+        # Prompt kullanma (genelleştirme için kapalı tutulur)
+        generated_ids = model.generate(input_features, **gen_kwargs)
     else:
         # Baseline (standart ayarlar)
         generated_ids = model.generate(
@@ -361,14 +351,14 @@ if __name__ == "__main__":
                 # Baseline transkripsiyon
                 whisper_baseline_text = transcribe_with_whisper(audio_path, use_config=False)
             
-            # 4. Karşılaştır
+            # 4. Karşılaştır (YouTube vs Baseline ve Config)
             if youtube_text and whisper_config_text and whisper_baseline_text:
                 # Her iki Whisper sonucu ile karşılaştır
                 print("\n" + "="*80)
                 print("📊 KARŞILAŞTIRMA SONUÇLARI")
                 print("="*80)
                 
-                # YouTube vs Config'li
+                # YouTube vs Config'li (prompt kapalı)
                 wer_config = calculate_wer(youtube_text, whisper_config_text)
                 similarity_config = max(0, 100 - wer_config)
                 
@@ -381,7 +371,7 @@ if __name__ == "__main__":
                 
                 print(f"\n🎯 WER (YouTube Altyazısına Göre):")
                 print(f"   🔵 Baseline:  {wer_baseline:.1f}%")
-                print(f"   🟢 Config'li: {wer_config:.1f}%")
+                print(f"   🟢 Config'li (No Prompt): {wer_config:.1f}%")
                 print(f"   📊 İyileşme:  {improvement:+.1f}%")
                 
                 if improvement > 2:

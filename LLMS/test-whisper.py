@@ -1,5 +1,7 @@
+import os
 import torch
 from transformers import WhisperProcessor, WhisperForConditionalGeneration
+from transformers.utils import logging as hf_logging
 import librosa
 import json
 import jiwer
@@ -7,19 +9,36 @@ import jiwer
 # ============================================================================
 # SES DOSYASI & REFERANS METİN (Opsiyonel)
 # ============================================================================
-audio_file = "audio.mp3"  # Buraya kendi ses dosyanı yaz
+audio_file = "iphone-air.mp3"  # Buraya kendi ses dosyanı yaz
 
 # WER hesaplamak için gerçek metni buraya yazabilirsin (opsiyonel)
-reference_text = "Enflasyon kelimesini duyduğunuzda genelde kastedilen fiyat enflasyonudur. Yani bir mal ve hizmet sepetinin genel fiyat seviyesindeki yükselmedir."  # Örnek: "Apple telefonları hakkında herkes bir şeyler söyledi..."
+reference_text = "Apple telefonları tanıttı, herkes de bir şeyler söyledi, tamam ama bak şimdi. Anladık çok ince telefon yapmışsın, sanki başkası daha önce yapmamış gibi. Ben bu telefonu almaya kalksam yaklaşık 44 bin lira vergi vereceğim. Telefona 98 bin lira verdikten sonra benim sadece tek kanlarım olacak. Ben 11'den devam kardeş."  # Örnek: "Apple telefonları hakkında herkes bir şeyler söyledi..."
 
 # ============================================================================
 # MODEL YÜKLEME
 # ============================================================================
+os.environ["TRANSFORMERS_VERBOSITY"] = "error"
+hf_logging.set_verbosity_error()
 print("🚀 Model yükleniyor...")
 
-# Config
-with open("whisper_best_config.json", 'r', encoding='utf-8') as f:
+# Config yolu: öncelik ortam değişkeni WHISPER_OUTPUTS_DIR, sonra Whisper/outputs/, sonra mevcut klasör
+def _resolve_config_path():
+    env_dir = os.environ.get("WHISPER_OUTPUTS_DIR")
+    if env_dir:
+        p = os.path.join(env_dir, "whisper_best_config.json")
+        if os.path.exists(p):
+            return p
+    here = os.path.dirname(__file__)
+    p2 = os.path.join(here, "Whisper", "outputs", "whisper_best_config.json")
+    if os.path.exists(p2):
+        return p2
+    p3 = os.path.join(here, "whisper_best_config.json")
+    return p3
+
+config_path = _resolve_config_path()
+with open(config_path, 'r', encoding='utf-8') as f:
     config = json.load(f)
+print(f"✓ Config: {config_path}")
 
 # Model
 processor = WhisperProcessor.from_pretrained("openai/whisper-small")
