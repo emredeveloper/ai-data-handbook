@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Popup Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 50px;
+            background: #f0f0f0;
+        }
+
+        .text-container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            line-height: 1.8;
+            font-size: 18px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .selection-popup {
+            position: fixed;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+            display: none;
+            z-index: 9999;
+            cursor: pointer;
+            font-size: 15px;
+            font-weight: bold;
+            pointer-events: auto;
+        }
+
+        .selection-popup:hover {
+            transform: scale(1.08);
+        }
+    </style>
+</head>
+<body>
+    <h1>Test: Metin Seçimi ve Popup</h1>
+    <p>Aşağıdaki metinden birkaç kelime seçin:</p>
+
+    <div class="text-container" id="textContainer">
+        <p>Mustafa Kemal Atatürk was a Turkish field marshal, revolutionary statesman, author, and the founding father of the Republic of Turkey, serving as its first president from 1923 until his death in 1938.</p>
+        
+        <p>He undertook sweeping progressive reforms, which modernized Turkey into a secular, industrializing nation. Ideologically a secularist and nationalist, his policies and socio-political theories became known as Kemalism.</p>
+        
+        <p>Due to his military and political accomplishments, Atatürk is regarded as one of the most important political leaders of the 20th century.</p>
+    </div>
+
+    <div class="selection-popup" id="selectionPopup">
+        💬 AI ile Açıkla
+    </div>
+
+    <script>
+        let selectedText = '';
+
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM loaded');
+            
+            const popup = document.getElementById('selectionPopup');
+            const textContainer = document.getElementById('textContainer');
+            
+            // Metin seçimi
+            textContainer.addEventListener('mouseup', function(e) {
+                setTimeout(() => {
+                    const selection = window.getSelection();
+                    selectedText = selection.toString().trim();
+                    
+                    console.log('Text selected:', selectedText);
+                    
+                    if (selectedText.length > 3) {
+                        const range = selection.getRangeAt(0);
+                        const rect = range.getBoundingClientRect();
+                        
+                        console.log('Rect:', rect);
+                        
+                        popup.style.display = 'block';
+                        popup.style.left = `${rect.left + (rect.width / 2) - 75}px`;
+                        popup.style.top = `${rect.top - 50}px`;
+                        
+                        console.log('Popup shown at:', popup.style.left, popup.style.top);
+                    } else {
+                        popup.style.display = 'none';
+                    }
+                }, 10);
+            });
+            
+            // Popup click
+            popup.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('Popup clicked!');
+                alert('Seçili metin: ' + selectedText);
+                popup.style.display = 'none';
+                window.getSelection().removeAllRanges();
+            });
+            
+            // Başka yere tıklayınca popup'ı gizle
+            document.addEventListener('click', function(e) {
+                if (e.target !== popup) {
+                    popup.style.display = 'none';
+                }
+            });
+        });
+    </script>
+</body>
+</html>

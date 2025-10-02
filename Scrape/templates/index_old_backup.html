@@ -1,0 +1,1352 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎓 English Learning Platform - Wikipedia ile İngilizce Öğren</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            flex-direction: row;
+            gap: 20px;
+        }
+
+        .main-content {
+            flex: 1;
+            min-width: 0;
+            max-width: calc(100% - 420px);
+            // AI çağrısı yap - INTERAKTIF VERSİYON
+        async function callAI(endpoint, data, loadingMessage) {
+            const resultBox = document.getElementById('resultBox');
+            resultBox.innerHTML = `<div class="loading">${loadingMessage}</div>`;
+
+            try {
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    // Check if it's interactive exercises (JSON data)
+                    if (result.data && result.data.exercises) {
+                        renderInteractiveExercises(result.data.exercises, result.type);
+                    } else {
+                        // Fallback to text display
+                        const content = result.analysis || result.exercises || result.explanation;
+                        resultBox.innerHTML = `<div class="result-box">${content}</div>`;
+                    }
+                } else {
+                    resultBox.innerHTML = `<div class="error">❌ ${result.error}</div>`;
+                }
+            } catch (error) {
+                resultBox.innerHTML = `<div class="error">❌ Hata: ${error.message}</div>`;
+            }
+        }
+
+        // İnteraktif alıştırmaları render et
+        function renderInteractiveExercises(exercises, type) {
+            const resultBox = document.getElementById('resultBox');
+            let currentScore = 0;
+            let totalQuestions = exercises.length;
+            
+            let html = `
+                <div class="exercise-container">
+                    <div class="exercise-header">
+                        <h3>${getExerciseTitle(type)}</h3>
+                        <div class="score-display">
+                            <span>Puan: <strong id="currentScore">0</strong>/${totalQuestions * 10}</span>
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="progressFill"></div>
+                            </div>
+                        </div>
+                    </div>
+            `;
+
+            exercises.forEach((exercise, index) => {
+                html += renderExercise(exercise, index);
+            });
+
+            html += `
+                    <div class="exercise-summary" id="exerciseSummary" style="display: none;">
+                        <h3>🎉 Tebrikler!</h3>
+                        <p>Skorunuz: <strong id="finalScore">0</strong>/${totalQuestions * 10}</p>
+                        <button onclick="location.reload()">Yeni Alıştırma</button>
+                    </div>
+                </div>
+            `;
+
+            resultBox.innerHTML = html;
+        }
+
+        // Alıştırma başlığı
+        function getExerciseTitle(type) {
+            const titles = {
+                'vocabulary': '📚 Kelime Pratiği',
+                'grammar': '✍️ Gramer Pratiği',
+                'comprehension': '🤔 Anlama Pratiği',
+                'quiz': '🎮 İnteraktif Quiz'
+            };
+            return titles[type] || '📝 Alıştırma';
+        }
+
+        // Her bir alıştırmayı render et
+        function renderExercise(exercise, index) {
+            const questionId = `q${index}`;
+            
+            switch(exercise.type) {
+                case 'multiple_choice':
+                    return renderMultipleChoice(exercise, questionId);
+                case 'fill_blank':
+                    return renderFillBlank(exercise, questionId);
+                case 'matching':
+                    return renderMatching(exercise, questionId);
+                case 'true_false':
+                    return renderTrueFalse(exercise, questionId);
+                case 'word_definition':
+                    return renderMultipleChoice(exercise, questionId);
+                case 'sentence_order':
+                    return renderSentenceOrder(exercise, questionId);
+                case 'error_correction':
+                    return renderErrorCorrection(exercise, questionId);
+                default:
+                    return '';
+            }
+        }
+
+        // Multiple choice render
+        function renderMultipleChoice(exercise, questionId) {
+            return `
+                <div class="exercise-item" id="${questionId}">
+                    <div class="question-header">
+                        <span class="question-number">Soru ${questionId.slice(1, questionId.length) + 1}</span>
+                        <span class="exercise-type">Çoktan Seçmeli</span>
+                    </div>
+                    <p class="question-text">${exercise.question}</p>
+                    ${exercise.word ? `<p class="word-context"><strong>"${exercise.word}"</strong> - ${exercise.sentence}</p>` : ''}
+                    <div class="options">
+                        ${exercise.options.map((option, i) => `
+                            <label class="option-label">
+                                <input type="radio" name="${questionId}" value="${i}" 
+                                       onchange="checkAnswer('${questionId}', ${i}, ${exercise.correct}, '${exercise.explanation}')">
+                                <span>${option}</span>
+                            </label>
+                        `).join('')}
+                    </div>
+                    <div class="feedback" id="${questionId}_feedback"></div>
+                </div>
+            `;
+        }
+
+        // Fill in the blank render
+        function renderFillBlank(exercise, questionId) {
+            const sentence = exercise.sentence.replace('_____', '<input type="text" class="blank-input" id="' + questionId + '_input" placeholder="...">');
+            return `
+                <div class="exercise-item" id="${questionId}">
+                    <div class="question-header">
+                        <span class="question-number">Soru ${parseInt(questionId.slice(1)) + 1}</span>
+                        <span class="exercise-type">Boşluk Doldurma</span>
+                    </div>
+                    <p class="question-text">${sentence}</p>
+                    ${exercise.hint ? `<p class="hint">💡 İpucu: ${exercise.hint}</p>` : ''}
+                    <button class="check-btn" onclick="checkFillBlank('${questionId}', '${exercise.answer}', '${exercise.explanation}')">
+                        Kontrol Et
+                    </button>
+                    <div class="feedback" id="${questionId}_feedback"></div>
+                </div>
+            `;
+        }
+
+        // True/False render
+        function renderTrueFalse(exercise, questionId) {
+            return `
+                <div class="exercise-item" id="${questionId}">
+                    <div class="question-header">
+                        <span class="question-number">Soru ${parseInt(questionId.slice(1)) + 1}</span>
+                        <span class="exercise-type">Doğru/Yanlış</span>
+                    </div>
+                    <p class="question-text">${exercise.statement}</p>
+                    <div class="options tf-options">
+                        <label class="option-label tf-option">
+                            <input type="radio" name="${questionId}" value="true" 
+                                   onchange="checkTrueFalse('${questionId}', true, ${exercise.correct}, '${exercise.explanation}')">
+                            <span>✅ Doğru</span>
+                        </label>
+                        <label class="option-label tf-option">
+                            <input type="radio" name="${questionId}" value="false" 
+                                   onchange="checkTrueFalse('${questionId}', false, ${exercise.correct}, '${exercise.explanation}')">
+                            <span>❌ Yanlış</span>
+                        </label>
+                    </div>
+                    <div class="feedback" id="${questionId}_feedback"></div>
+                </div>
+            `;
+        }
+
+        // Matching render (simplified)
+        function renderMatching(exercise, questionId) {
+            return `
+                <div class="exercise-item" id="${questionId}">
+                    <div class="question-header">
+                        <span class="question-number">Soru ${parseInt(questionId.slice(1)) + 1}</span>
+                        <span class="exercise-type">Eşleştirme</span>
+                    </div>
+                    <p class="question-text">${exercise.instruction}</p>
+                    <div class="matching-container">
+                        ${exercise.pairs.map((pair, i) => `
+                            <div class="matching-pair">
+                                <span class="match-left">${pair.english}</span>
+                                <select class="match-select" id="${questionId}_${i}">
+                                    <option value="">Seçin...</option>
+                                    ${exercise.pairs.map((p, j) => `<option value="${j}">${p.turkish}</option>`).join('')}
+                                </select>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <button class="check-btn" onclick="checkMatching('${questionId}', ${JSON.stringify(exercise.pairs)})">
+                        Kontrol Et
+                    </button>
+                    <div class="feedback" id="${questionId}_feedback"></div>
+                </div>
+            `;
+        }
+
+        // Sentence order & error correction (simplified for now)
+        function renderSentenceOrder(exercise, questionId) {
+            return `<div class="exercise-item"><p>Sentence ordering coming soon...</p></div>`;
+        }
+
+        function renderErrorCorrection(exercise, questionId) {
+            return `<div class="exercise-item"><p>Error correction coming soon...</p></div>`;
+        }
+
+        // Answer checking functions
+        function checkAnswer(questionId, selected, correct, explanation) {
+            const feedback = document.getElementById(`${questionId}_feedback`);
+            const isCorrect = selected === correct;
+            
+            if (isCorrect) {
+                feedback.innerHTML = `<div class="correct">✅ Doğru! ${explanation}</div>`;
+                updateScore(10);
+            } else {
+                feedback.innerHTML = `<div class="incorrect">❌ Yanlış. ${explanation}</div>`;
+            }
+            
+            // Disable further changes
+            document.querySelectorAll(`input[name="${questionId}"]`).forEach(input => input.disabled = true);
+        }
+
+        function checkFillBlank(questionId, correctAnswer, explanation) {
+            const input = document.getElementById(`${questionId}_input`);
+            const userAnswer = input.value.trim().toLowerCase();
+            const correct = correctAnswer.toLowerCase();
+            const feedback = document.getElementById(`${questionId}_feedback`);
+            
+            if (userAnswer === correct) {
+                feedback.innerHTML = `<div class="correct">✅ Doğru! ${explanation}</div>`;
+                updateScore(10);
+                input.disabled = true;
+            } else {
+                feedback.innerHTML = `<div class="incorrect">❌ Yanlış. Doğru cevap: <strong>${correctAnswer}</strong>. ${explanation}</div>`;
+            }
+        }
+
+        function checkTrueFalse(questionId, selected, correct, explanation) {
+            const feedback = document.getElementById(`${questionId}_feedback`);
+            const isCorrect = selected === correct;
+            
+            if (isCorrect) {
+                feedback.innerHTML = `<div class="correct">✅ Doğru! ${explanation}</div>`;
+                updateScore(10);
+            } else {
+                feedback.innerHTML = `<div class="incorrect">❌ Yanlış. ${explanation}</div>`;
+            }
+            
+            document.querySelectorAll(`input[name="${questionId}"]`).forEach(input => input.disabled = true);
+        }
+
+        function checkMatching(questionId, pairs) {
+            let correct = 0;
+            const feedback = document.getElementById(`${questionId}_feedback`);
+            
+            pairs.forEach((pair, i) => {
+                const select = document.getElementById(`${questionId}_${i}`);
+                if (parseInt(select.value) === i) {
+                    correct++;
+                    select.style.border = '2px solid #4caf50';
+                } else {
+                    select.style.border = '2px solid #f44336';
+                }
+                select.disabled = true;
+            });
+            
+            const score = Math.round((correct / pairs.length) * 10);
+            updateScore(score);
+            
+            feedback.innerHTML = `<div class="${correct === pairs.length ? 'correct' : 'incorrect'}">
+                ${correct}/${pairs.length} doğru eşleştirme. ${score} puan!
+            </div>`;
+        }
+
+        // Score tracking
+        let totalScore = 0;
+        function updateScore(points) {
+            totalScore += points;
+            document.getElementById('currentScore').textContent = totalScore;
+            
+            const progress = document.getElementById('progressFill');
+            if (progress) {
+                const percentage = (totalScore / (document.querySelectorAll('.exercise-item').length * 10)) * 100;
+                progress.style.width = percentage + '%';
+            }
+        }
+        .chat-sidebar {
+            width: 400px;
+            min-width: 400px;
+            max-width: 400px;
+            flex-shrink: 0;
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            display: none;
+            flex-direction: column;
+            max-height: calc(100vh - 40px);
+            position: sticky;
+            top: 20px;
+            order: 2;
+        }
+
+        .chat-sidebar.active {
+            display: flex;
+        }
+
+        .chat-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .chat-header h3 {
+            color: #667eea;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .close-chat {
+            background: #ff4444;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            cursor: pointer;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #f9f9f9;
+            border-radius: 10px;
+        }
+
+        .chat-message {
+            margin-bottom: 15px;
+            padding: 15px;
+            border-radius: 12px;
+            animation: slideIn 0.3s;
+            line-height: 1.6;
+        }
+
+        .chat-message.user {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            margin-left: 30px;
+            box-shadow: 0 2px 10px rgba(102, 126, 234, 0.3);
+        }
+
+        .chat-message.ai {
+            background: white;
+            border: 2px solid #e0e0e0;
+            margin-right: 30px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        }
+
+        .chat-message.ai strong {
+            color: #667eea;
+            display: block;
+            margin-top: 10px;
+            margin-bottom: 5px;
+        }
+
+        .chat-message.ai ul {
+            margin: 5px 0;
+            padding-left: 20px;
+        }
+
+        .chat-message.ai li {
+            margin: 5px 0;
+        }
+
+        .chat-message .selected-text {
+            font-style: italic;
+            opacity: 0.9;
+            font-size: 0.95em;
+            margin-bottom: 8px;
+            padding: 8px;
+            background: rgba(0,0,0,0.05);
+            border-radius: 5px;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .selection-popup {
+            position: fixed !important;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+            display: none;
+            z-index: 9999 !important;
+            cursor: pointer;
+            font-size: 15px;
+            font-weight: bold;
+            transition: all 0.2s;
+            white-space: nowrap;
+            pointer-events: auto;
+        }
+
+        .selection-popup:hover {
+            transform: scale(1.08);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .selection-popup::before {
+            content: '💬 ';
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        button {
+            padding: 15px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .action-buttons {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .action-buttons button {
+            padding: 15px;
+            font-size: 14px;
+        }
+
+        .article-container {
+            display: none;
+        }
+
+        .article-text {
+            line-height: 1.8;
+            font-size: 18px;
+            text-align: justify;
+            padding: 20px;
+            background: #f9f9f9;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            max-height: 500px;
+            overflow-y: auto;
+            user-select: text;
+        }
+
+        .article-text::selection {
+            background: #667eea;
+            color: white;
+        }
+
+        .article-text p {
+            margin-bottom: 15px;
+        }
+
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .stat-item {
+            text-align: center;
+            padding: 15px;
+            background: #f0f0f0;
+            border-radius: 10px;
+            flex: 1;
+            min-width: 150px;
+        }
+
+        .stat-item .number {
+            font-size: 2em;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .stat-item .label {
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .result-box {
+            background: #f9f9f9;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+            white-space: pre-wrap;
+            line-height: 1.6;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #667eea;
+        }
+
+        .loading::after {
+            content: '...';
+            animation: dots 1.5s infinite;
+        }
+
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
+
+        .error {
+            background: #ff4444;
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .success {
+            background: #00C851;
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .tooltip {
+            position: fixed;
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 1000;
+            max-width: 300px;
+            display: none;
+        }
+
+        .highlight {
+            background-color: #fff3cd;
+            padding: 2px 4px;
+            border-radius: 3px;
+        }
+
+        #selectedTextBtn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            display: none;
+            z-index: 999;
+            animation: bounce 0.5s;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        /* Interactive Exercise Styles */
+        .exercise-container {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            margin-top: 20px;
+        }
+
+        .exercise-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 3px solid #f0f0f0;
+        }
+
+        .score-display {
+            text-align: right;
+        }
+
+        .score-display span {
+            display: block;
+            color: #667eea;
+            font-size: 16px;
+            margin-bottom: 8px;
+        }
+
+        .progress-bar {
+            width: 200px;
+            height: 10px;
+            background: #e0e0e0;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.5s ease;
+        }
+
+        .exercise-item {
+            background: #f9f9f9;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            border-left: 5px solid #667eea;
+            transition: transform 0.2s;
+        }
+
+        .exercise-item:hover {
+            transform: translateX(5px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
+        .question-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+
+        .question-number {
+            background: #667eea;
+            color: white;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: bold;
+        }
+
+        .exercise-type {
+            background: #e0e0e0;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            color: #666;
+        }
+
+        .question-text {
+            font-size: 16px;
+            font-weight: 500;
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .word-context {
+            background: #fff3e0;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .options {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .option-label {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border: 2px solid #e0e0e0;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .option-label:hover {
+            border-color: #667eea;
+            transform: translateX(5px);
+        }
+
+        .option-label input[type="radio"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+
+        .option-label span {
+            flex: 1;
+            font-size: 15px;
+        }
+
+        .tf-options {
+            flex-direction: row;
+            gap: 15px;
+        }
+
+        .tf-option {
+            flex: 1;
+            justify-content: center;
+        }
+
+        .blank-input {
+            padding: 8px 15px;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            font-size: 15px;
+            min-width: 150px;
+        }
+
+        .check-btn {
+            margin-top: 15px;
+            padding: 10px 25px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .check-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .feedback {
+            margin-top: 15px;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            animation: slideIn 0.3s;
+        }
+
+        .feedback .correct {
+            background: #e8f5e9;
+            color: #2e7d32;
+            padding: 12px;
+            border-radius: 8px;
+            border-left: 4px solid #4caf50;
+        }
+
+        .feedback .incorrect {
+            background: #ffebee;
+            color: #c62828;
+            padding: 12px;
+            border-radius: 8px;
+            border-left: 4px solid #f44336;
+        }
+
+        .hint {
+            background: #fff9c4;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 13px;
+            margin-bottom: 12px;
+            border-left: 4px solid #fbc02d;
+        }
+
+        .matching-container {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin: 15px 0;
+        }
+
+        .matching-pair {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            background: white;
+            padding: 12px;
+            border-radius: 8px;
+        }
+
+        .match-left {
+            flex: 1;
+            font-weight: 600;
+            color: #667eea;
+        }
+
+        .match-select {
+            flex: 1;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .exercise-summary {
+            text-align: center;
+            padding: 40px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border-radius: 15px;
+            margin-top: 30px;
+        }
+
+        .exercise-summary h3 {
+            font-size: 32px;
+            margin-bottom: 15px;
+        }
+
+        .exercise-summary p {
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+
+        @media (max-width: 1024px) {
+            body {
+                flex-direction: column;
+            }
+            
+            .main-content {
+                margin-right: 0;
+            }
+            
+            .chat-sidebar {
+                width: 100%;
+                position: relative;
+                margin-top: 20px;
+            }
+
+            .progress-bar {
+                width: 150px;
+            }
+
+            .tf-options {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Selection Popup -->
+    <div class="selection-popup" id="selectionPopup">
+        AI ile Açıkla
+    </div>
+
+    <div class="main-content">
+        <div class="container">
+            <header>
+                <h1>🎓 English Learning Platform</h1>
+                <p>Wikipedia makaleleriyle İngilizce öğrenin ve pratiğinizi geliştirin</p>
+            </header>
+
+            <div class="card">
+                <h2>📰 Wikipedia Makalesini Yükle</h2>
+                <div class="input-group">
+                <input type="text" id="wikiUrl" 
+                       placeholder="Wikipedia makale URL'sini girin (örn: https://en.wikipedia.org/wiki/...)"
+                       value="https://en.wikipedia.org/wiki/Mustafa_Kemal_Atat%C3%BCrk">
+                <button onclick="scrapeArticle()" id="scrapeBtn">📥 Makaleyi Çek</button>
+            </div>
+            <div id="message"></div>
+        </div>
+
+        <div id="articleContainer" class="article-container">
+            <div class="card">
+                <h2>📊 Makale İstatistikleri</h2>
+                <div class="stats">
+                    <div class="stat-item">
+                        <div class="number" id="wordCount">0</div>
+                        <div class="label">Kelime</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="number" id="charCount">0</div>
+                        <div class="label">Karakter</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="number" id="readTime">0</div>
+                        <div class="label">Dakika (Okuma)</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>📖 Makale Metni</h2>
+                <p style="color: #666; margin-bottom: 10px;">💡 İpucu: Metni seçerek AI açıklaması alın!</p>
+                <div id="articleText" class="article-text"></div>
+            </div>
+
+            <div class="card">
+                <h2>🎯 İngilizce Öğrenme Araçları</h2>
+                <div class="action-buttons">
+                    <button onclick="analyzeLevel()">📊 Seviyemi Ölç (A1-C2)</button>
+                    <button onclick="practice('vocabulary')">📚 Kelime Pratiği</button>
+                    <button onclick="practice('grammar')">✍️ Gramer Pratiği</button>
+                    <button onclick="practice('comprehension')">🤔 Anlama Pratiği</button>
+                    <button onclick="practice('quiz')">🎮 Quiz Oluştur</button>
+                </div>
+                <div id="resultBox"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chat Sidebar -->
+    <div class="chat-sidebar" id="chatSidebar">
+        <div class="chat-header">
+            <h3>� İngilizce Öğrenme</h3>
+            <button class="close-chat" onclick="closeChatSidebar()">×</button>
+        </div>
+        <div class="chat-messages" id="chatMessages">
+            <div style="text-align: center; color: #999; padding: 20px;">
+                📚 Metni seçin ve İngilizce öğrenmeye başlayın! 👆
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentArticle = '';
+        let selectedText = '';
+
+        // DOM yüklendikten sonra event listener'ları ekle
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('=== DOM LOADED ===');
+            
+            // Popup click event
+            const popup = document.getElementById('selectionPopup');
+            console.log('Popup element:', popup);
+            
+            if (popup) {
+                popup.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('=== POPUP CLICKED ===');
+                    console.log('Selected text:', selectedText);
+                    if (selectedText && selectedText.length > 0) {
+                        explainSelectedText();
+                    } else {
+                        console.error('No text selected when popup clicked!');
+                    }
+                });
+                console.log('Popup click event attached');
+            } else {
+                console.error('Popup element not found!');
+            }
+
+            // Enter tuşu ile scrape
+            const wikiUrl = document.getElementById('wikiUrl');
+            if (wikiUrl) {
+                wikiUrl.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        scrapeArticle();
+                    }
+                });
+            }
+        });
+
+        // Wikipedia makalesini çek
+        async function scrapeArticle() {
+            const url = document.getElementById('wikiUrl').value;
+            const messageDiv = document.getElementById('message');
+            const scrapeBtn = document.getElementById('scrapeBtn');
+            
+            if (!url) {
+                showMessage('Lütfen bir URL girin!', 'error');
+                return;
+            }
+
+            scrapeBtn.disabled = true;
+            scrapeBtn.textContent = '⏳ Çekiliyor...';
+            messageDiv.innerHTML = '<div class="loading">Makale yükleniyor</div>';
+
+            try {
+                const response = await fetch('/scrape', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({url: url})
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    currentArticle = data.article;
+                    displayArticle(data.article, data.word_count);
+                    showMessage('✅ Makale başarıyla yüklendi!', 'success');
+                } else {
+                    showMessage('❌ Hata: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showMessage('❌ Bağlantı hatası: ' + error.message, 'error');
+            } finally {
+                scrapeBtn.disabled = false;
+                scrapeBtn.textContent = '📥 Makaleyi Çek';
+            }
+        }
+
+        // Makaleyi göster
+        function displayArticle(article, wordCount) {
+            const articleText = document.getElementById('articleText');
+            const paragraphs = article.split('\n\n');
+            articleText.innerHTML = paragraphs.map(p => `<p>${p}</p>`).join('');
+            
+            document.getElementById('wordCount').textContent = wordCount.toLocaleString();
+            document.getElementById('charCount').textContent = article.length.toLocaleString();
+            document.getElementById('readTime').textContent = Math.ceil(wordCount / 200);
+            
+            document.getElementById('articleContainer').style.display = 'block';
+            
+            // Metin seçimi için event listener - article text içinde
+            const articleTextDiv = document.getElementById('articleText');
+            articleTextDiv.addEventListener('mouseup', handleTextSelection);
+            articleTextDiv.addEventListener('touchend', handleTextSelection); // Mobil destek
+        }
+
+        // Metin seçimi kontrolü - BASİT VERSİYON
+        function handleTextSelection(e) {
+            setTimeout(() => {
+                const selection = window.getSelection();
+                selectedText = selection.toString().trim();
+                const popup = document.getElementById('selectionPopup');
+                
+                console.log('=== TEXT SELECTION DEBUG ===');
+                console.log('Selected text:', selectedText);
+                console.log('Selected text length:', selectedText.length);
+                
+                if (selectedText.length > 3) {
+                    try {
+                        const range = selection.getRangeAt(0);
+                        const rect = range.getBoundingClientRect();
+                        
+                        console.log('Rectangle:', rect);
+                        console.log('Scroll Y:', window.scrollY);
+                        
+                        // Popup'ı göster
+                        popup.style.display = 'block';
+                        popup.style.position = 'fixed';
+                        popup.style.left = `${rect.left + (rect.width / 2) - 75}px`;
+                        popup.style.top = `${rect.top - 50}px`;
+                        
+                        console.log('Popup positioned at:', popup.style.left, popup.style.top);
+                        console.log('Popup display:', popup.style.display);
+                    } catch (error) {
+                        console.error('Error positioning popup:', error);
+                    }
+                } else {
+                    popup.style.display = 'none';
+                    console.log('Text too short, hiding popup');
+                }
+            }, 10);
+        }
+
+        // Chat sidebar'ı kapat
+        function closeChatSidebar() {
+            document.getElementById('chatSidebar').classList.remove('active');
+        }
+
+        // Chat'e mesaj ekle
+        function addChatMessage(text, explanation, isUser = false) {
+            const chatMessages = document.getElementById('chatMessages');
+            
+            // İlk kullanımda placeholder'ı kaldır
+            const placeholder = chatMessages.querySelector('div[style*="text-align: center"]');
+            if (placeholder) {
+                placeholder.remove();
+            }
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `chat-message ${isUser ? 'user' : 'ai'}`;
+            
+            if (isUser) {
+                messageDiv.innerHTML = `<div class="selected-text">"${text}"</div>`;
+            } else {
+                messageDiv.innerHTML = explanation;
+            }
+            
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // Seçili metni açıkla (yeni fonksiyon)
+        async function explainSelectedText() {
+            console.log('explainSelectedText called with:', selectedText); // Debug
+            
+            if (!selectedText) {
+                console.error('No text selected!');
+                return;
+            }
+            
+            // Popup'ı gizle
+            document.getElementById('selectionPopup').style.display = 'none';
+            
+            // Chat sidebar'ı aç
+            const chatSidebar = document.getElementById('chatSidebar');
+            chatSidebar.classList.add('active');
+            
+            console.log('Chat sidebar opened'); // Debug
+            
+            // Kullanıcı mesajını ekle
+            addChatMessage(selectedText, '', true);
+            
+            // Yükleniyor mesajı
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = 'chat-message ai';
+            loadingDiv.innerHTML = '<div class="loading">AI düşünüyor</div>';
+            loadingDiv.id = 'loadingMessage';
+            document.getElementById('chatMessages').appendChild(loadingDiv);
+            
+            try {
+                console.log('Sending request to /explain'); // Debug
+                
+                const response = await fetch('/explain', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({text: selectedText, article: currentArticle})
+                });
+
+                const result = await response.json();
+                
+                console.log('Received response:', result); // Debug
+                
+                // Yükleniyor mesajını kaldır
+                const loadingMsg = document.getElementById('loadingMessage');
+                if (loadingMsg) loadingMsg.remove();
+                
+                if (result.success) {
+                    addChatMessage('', result.explanation, false);
+                } else {
+                    addChatMessage('', `❌ Hata: ${result.error}`, false);
+                }
+            } catch (error) {
+                console.error('Error:', error); // Debug
+                const loadingMsg = document.getElementById('loadingMessage');
+                if (loadingMsg) loadingMsg.remove();
+                addChatMessage('', `❌ Bağlantı hatası: ${error.message}`, false);
+            }
+            
+            // Seçimi temizle
+            window.getSelection().removeAllRanges();
+            selectedText = '';
+        }
+
+        // Seviye analizi
+        async function analyzeLevel() {
+            await callAI('/analyze-level', {article: currentArticle}, '📊 Seviyeniz analiz ediliyor');
+        }
+
+        // Pratik oluştur
+        async function practice(type) {
+            const titles = {
+                'vocabulary': '📚 Kelime pratiği hazırlanıyor',
+                'grammar': '✍️ Gramer alıştırmaları oluşturuluyor',
+                'comprehension': '🤔 Anlama soruları hazırlanıyor',
+                'quiz': '🎮 Quiz hazırlanıyor'
+            };
+            await callAI('/practice', {article: currentArticle, type: type}, titles[type]);
+        }
+
+        // Seçili metni açıkla (yeni fonksiyon)
+        async function explainSelectedText() {
+            if (!selectedText) return;
+            
+            // Popup'ı gizle
+            document.getElementById('selectionPopup').style.display = 'none';
+            
+            // Chat sidebar'ı aç
+            const chatSidebar = document.getElementById('chatSidebar');
+            chatSidebar.classList.add('active');
+            
+            // Kullanıcı mesajını ekle
+            addChatMessage(selectedText, '', true);
+            
+            // Yükleniyor mesajı
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = 'chat-message ai';
+            loadingDiv.innerHTML = '<div class="loading">AI düşünüyor</div>';
+            loadingDiv.id = 'loadingMessage';
+            document.getElementById('chatMessages').appendChild(loadingDiv);
+            
+            try {
+                const response = await fetch('/explain', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({text: selectedText, article: currentArticle})
+                });
+
+                const result = await response.json();
+                
+                // Yükleniyor mesajını kaldır
+                document.getElementById('loadingMessage').remove();
+                
+                if (result.success) {
+                    addChatMessage('', result.explanation, false);
+                } else {
+                    addChatMessage('', `❌ Hata: ${result.error}`, false);
+                }
+            } catch (error) {
+                document.getElementById('loadingMessage').remove();
+                addChatMessage('', `❌ Bağlantı hatası: ${error.message}`, false);
+            }
+            
+            // Seçimi temizle
+            window.getSelection().removeAllRanges();
+            selectedText = '';
+        }
+
+        // Eski fonksiyon kaldırıldı
+        async function explainSelected() {
+            explainSelectedText();
+        }
+
+        // AI çağrısı yap
+        async function callAI(endpoint, data, loadingMessage) {
+            const resultBox = document.getElementById('resultBox');
+            resultBox.innerHTML = `<div class="loading">${loadingMessage}</div>`;
+
+            try {
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    const content = result.analysis || result.exercises || result.explanation;
+                    resultBox.innerHTML = `<div class="result-box">${content}</div>`;
+                } else {
+                    resultBox.innerHTML = `<div class="error">❌ ${result.error}</div>`;
+                }
+            } catch (error) {
+                resultBox.innerHTML = `<div class="error">❌ Hata: ${error.message}</div>`;
+            }
+        }
+
+        // Mesaj göster
+        function showMessage(message, type) {
+            const messageDiv = document.getElementById('message');
+            messageDiv.innerHTML = `<div class="${type}">${message}</div>`;
+            setTimeout(() => {
+                messageDiv.innerHTML = '';
+            }, 5000);
+        }
+    </script>
+</body>
+</html>

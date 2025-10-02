@@ -1,0 +1,1098 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>English Learning Platform - Wikipedia ile İngilizce Öğren</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root{
+            /* core theme colors */
+            --bg: #0f1720; /* dark page background */
+            --card: #0b1220; /* dark card background */
+            --panel: #071021;
+
+            /* accents */
+            --accent1: #6ee7b7;
+            --accent2: #7c3aed;
+
+            /* text colors */
+            --text-light: #e6eef6; /* primary text on dark surfaces */
+            --text-muted: #9aa4b2;
+            --text-dark: #0b1220; /* primary text on light surfaces */
+
+            /* surface (light) colors used inside cards for readability */
+            --surface-1: #f7fafc; /* slightly warm white */
+            --surface-2: #f3f6f9; /* alternative light surface */
+
+            /* glass / overlays */
+            --glass: rgba(255,255,255,0.03);
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg);
+            color: var(--text-light);
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            flex-direction: row;
+            gap: 20px;
+        }
+
+        .main-content {
+            flex: 1;
+            min-width: 0;
+            max-width: calc(100% - 420px);
+        }
+
+        .chat-sidebar {
+            width: 400px;
+            min-width: 400px;
+            max-width: 400px;
+            flex-shrink: 0;
+            background: var(--card);
+            border-radius: 12px;
+            padding: 18px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+            display: none;
+            flex-direction: column;
+            max-height: calc(100vh - 40px);
+            position: sticky;
+            top: 20px;
+            order: 2;
+            font-size: 20px;
+            color: var(--text-light);
+        }
+
+        .chat-sidebar.active {
+            display: flex;
+        }
+
+        .chat-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid rgba(255,255,255,0.06);
+        }
+
+        .chat-header h3 {
+            font-size: 22px;
+            color: var(--accent2);
+            margin: 0;
+        }
+
+        .close-chat {
+            background: var(--surface-2);
+            border: none;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            font-size: 18px;
+            line-height: 1;
+            cursor: pointer;
+            color: var(--text-dark);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            padding: 0;
+        }
+
+        .close-chat:hover {
+            background: #667eea;
+            color: white;
+            transform: rotate(90deg);
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+        }
+
+        .chat-message {
+            margin-bottom: 15px;
+            padding: 12px;
+            border-radius: 10px;
+            line-height: 1.6;
+        }
+
+        .chat-message.user {
+            background: linear-gradient(90deg, rgba(102,126,234,0.14), rgba(124,58,237,0.12));
+            color: var(--text-light);
+            font-style: italic;
+        }
+
+        .chat-message.ai {
+            background: var(--surface-2);
+            color: var(--text-dark);
+        }
+
+        .selection-popup {
+            position: fixed !important;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+            display: none;
+            z-index: 9999 !important;
+            cursor: pointer;
+            font-size: 15px;
+            font-weight: bold;
+            transition: all 0.2s;
+            white-space: nowrap;
+            pointer-events: auto;
+        }
+
+        .selection-popup:hover {
+            transform: scale(1.08);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .selection-popup::before {
+            content: '💬 ';
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .card {
+            background: var(--card);
+            border-radius: 12px;
+            padding: 22px;
+            margin-bottom: 18px;
+            box-shadow: 0 8px 30px rgba(2,6,23,0.7);
+            color: var(--text-light);
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 15px;
+            border: 2px solid rgba(255,255,255,0.06);
+            background: rgba(255,255,255,0.02);
+            color: var(--text-light);
+            border-radius: 10px;
+            font-size: 16px;
+        }
+
+        button {
+            padding: 15px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .action-buttons {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .article-container {
+            display: none;
+        }
+
+        .article-text {
+            line-height: 1.9;
+            font-size: 19px;
+            padding: 20px;
+            background: var(--surface-1);
+            color: var(--text-dark);
+            border-radius: 10px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            gap: 20px;
+        }
+
+        .stat-item {
+            text-align: center;
+            padding: 15px;
+            background: var(--surface-2);
+            color: var(--text-dark);
+            border-radius: 10px;
+            flex: 1;
+        }
+
+        .stat-item .number {
+            font-size: 2em;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #667eea;
+        }
+
+        .error {
+            background: #ff4444;
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+        }
+
+        .success {
+            background: #00C851;
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+        }
+
+        /* Interactive Exercise Styles */
+        .exercise-container {
+            background: var(--surface-1);
+            color: var(--text-dark);
+            border-radius: 15px;
+            padding: 25px;
+            margin-top: 20px;
+        }
+
+        .exercise-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 3px solid rgba(255,255,255,0.06);
+        }
+
+        .score-display span {
+            display: block;
+            color: #667eea;
+            font-size: 16px;
+            margin-bottom: 8px;
+        }
+
+        .progress-bar {
+            width: 200px;
+            height: 10px;
+            background: #e0e0e0;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.5s ease;
+        }
+
+        .exercise-item {
+            background: var(--surface-2);
+            color: var(--text-dark);
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            border-left: 5px solid var(--accent2);
+        }
+
+        .question-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+
+        .question-number {
+            background: #667eea;
+            color: white;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: bold;
+        }
+
+        .exercise-type {
+            background: #e0e0e0;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+        }
+
+        .question-text {
+            font-size: 18px;
+            font-weight: 500;
+            margin-bottom: 15px;
+        }
+
+        .options {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .option-label {
+            background: var(--surface-1);
+            padding: 15px;
+            border-radius: 8px;
+            border: 2px solid rgba(2,6,23,0.06);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 17px;
+            color: var(--text-dark);
+        }
+
+        .option-label:hover {
+            border-color: #667eea;
+        }
+
+        .feedback .correct {
+            background: #e8f5e9;
+            color: #2e7d32;
+            padding: 12px;
+            border-radius: 8px;
+        }
+
+        .feedback .incorrect {
+            background: #ffebee;
+            color: #c62828;
+            padding: 12px;
+            border-radius: 8px;
+        }
+
+        .result-box {
+            background: var(--surface-2);
+            color: var(--text-dark);
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+            line-height: 1.6;
+        }
+
+        .modal-close {
+            font-size: 18px;
+            background: var(--surface-2);
+            color: var(--text-dark);
+            border: none;
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(2,6,23,0.4);
+        }
+
+        @media (max-width: 1024px) {
+            body {
+                flex-direction: column;
+            }
+            .main-content {
+                max-width: 100%;
+            }
+            .chat-sidebar {
+                width: 100%;
+                min-width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="selection-popup" id="selectionPopup">AI ile Açıkla</div>
+
+    <div class="main-content">
+        <div class="container">
+            <header>
+                <h1>🎓 English Learning Platform</h1>
+                <p>Wikipedia makaleleriyle İngilizce öğrenin</p>
+            </header>
+
+            <div class="card">
+                <h2>📰 Wikipedia Makalesini Yükle</h2>
+                <div class="input-group">
+                    <input type="text" id="wikiUrl" 
+                           value="https://en.wikipedia.org/wiki/Mustafa_Kemal_Atat%C3%BCrk"
+                           placeholder="Wikipedia URL">
+                    <button onclick="scrapeArticle()" id="scrapeBtn">📥 Makaleyi Çek</button>
+                </div>
+                <div id="message"></div>
+            </div>
+
+            <div id="articleContainer" class="article-container">
+                <div class="card">
+                    <h2>📊 İstatistikler</h2>
+                    <div class="stats">
+                        <div class="stat-item">
+                            <div class="number" id="wordCount">0</div>
+                            <div class="label">Kelime</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="number" id="charCount">0</div>
+                            <div class="label">Karakter</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="number" id="readTime">0</div>
+                            <div class="label">Dakika</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>📖 Makale Metni</h2>
+                    <p style="color: #666; margin-bottom: 10px;">💡 Metni seç, popup'a tıkla!</p>
+                    <div id="articleText" class="article-text"></div>
+                </div>
+
+                <div class="card">
+                    <h2>🎯 İngilizce Öğrenme Araçları</h2>
+                    <div class="action-buttons">
+                        <button onclick="analyzeLevel()">📊 Seviyemi Ölç</button>
+                        <button onclick="practice('vocabulary')">📚 Kelime Pratiği</button>
+                        <button onclick="practice('grammar')">✍️ Gramer</button>
+                        <button onclick="practice('comprehension')">🤔 Anlama</button>
+                        <button onclick="practice('quiz')">🎮 Quiz</button>
+                    </div>
+                    <div style="margin-top:12px; display:flex; gap:8px; align-items:center;">
+                        <label style="color:#444;">CEFR Seviyesi:</label>
+                        <select id="cefrSelect" style="padding:8px; border-radius:8px;">
+                            <option>A1</option>
+                            <option>A2</option>
+                            <option>B1</option>
+                            <option>B2</option>
+                            <option>C1</option>
+                            <option>C2</option>
+                        </select>
+                        <button onclick="fetchVocabByLevel()">🔎 Seviyeye Göre Kelimeler</button>
+                    </div>
+                        <div id="profileCard" class="card" style="margin-top:18px; display:none;">
+                            <h3>🔎 Profil & İstatistik</h3>
+                            <div id="profileStats" style="font-size:14px; color:#333; line-height:1.6;">
+                                <!-- Filled by JS -->
+                            </div>
+                        </div>
+                        <div id="resultBox"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="chat-sidebar" id="chatSidebar">
+        <div class="chat-header">
+            <h3>📖 İngilizce Öğrenme</h3>
+            <button class="close-chat" onclick="closeChatSidebar()">×</button>
+        </div>
+        <div class="chat-messages" id="chatMessages">
+            <div style="text-align: center; color: #999; padding: 20px;">
+                Metni seç ve öğren! 👆
+            </div>
+        </div>
+    </div>
+
+    <!-- Vocab modal -->
+    <div id="vocabModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:99999; align-items:center; justify-content:center;">
+        <div style="background:white; width:90%; max-width:720px; border-radius:12px; padding:20px; max-height:80vh; overflow:auto;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <h3 style="margin:0;">🔤 Kelimeler - Seviye <span id="vocabLevel">A1</span></h3>
+                <button onclick="closeVocabModal()" class="modal-close" aria-label="Kapat">×</button>
+            </div>
+            <div id="vocabList"></div>
+        </div>
+    </div>
+
+    <script>
+        let currentArticle = '';
+        let selectedText = '';
+        let totalScore = 0;
+
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM loaded');
+            
+            const popup = document.getElementById('selectionPopup');
+            if (popup) {
+                popup.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (selectedText) explainSelectedText();
+                });
+            }
+
+            const wikiUrl = document.getElementById('wikiUrl');
+            if (wikiUrl) {
+                wikiUrl.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') scrapeArticle();
+                });
+            }
+        });
+
+        async function scrapeArticle() {
+            const url = document.getElementById('wikiUrl').value;
+            const btn = document.getElementById('scrapeBtn');
+            
+            btn.disabled = true;
+            btn.textContent = '⏳ Çekiliyor...';
+
+            try {
+                const response = await fetch('/scrape', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({url: url})
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    currentArticle = data.article;
+                    displayArticle(data.article, data.word_count);
+                    showMessage('✅ Makale yüklendi!', 'success');
+                } else {
+                    showMessage('❌ ' + data.error, 'error');
+                }
+            } catch (error) {
+                showMessage('❌ Hata: ' + error.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '📥 Makaleyi Çek';
+            }
+        }
+
+        function displayArticle(article, wordCount) {
+            const articleText = document.getElementById('articleText');
+            const paragraphs = article.split('\n\n');
+            articleText.innerHTML = paragraphs.map(p => `<p>${p}</p>`).join('');
+            
+            document.getElementById('wordCount').textContent = wordCount.toLocaleString();
+            document.getElementById('charCount').textContent = article.length.toLocaleString();
+            document.getElementById('readTime').textContent = Math.ceil(wordCount / 200);
+            document.getElementById('articleContainer').style.display = 'block';
+            
+            articleText.addEventListener('mouseup', handleTextSelection);
+        }
+
+        function handleTextSelection(e) {
+            setTimeout(() => {
+                const selection = window.getSelection();
+                selectedText = selection.toString().trim();
+                const popup = document.getElementById('selectionPopup');
+                
+                if (selectedText.length > 3) {
+                    const range = selection.getRangeAt(0);
+                    const rect = range.getBoundingClientRect();
+                    popup.style.display = 'block';
+                    popup.style.left = `${rect.left + (rect.width / 2) - 75}px`;
+                    popup.style.top = `${rect.top - 50}px`;
+                } else {
+                    popup.style.display = 'none';
+                }
+            }, 10);
+        }
+
+        function closeChatSidebar() {
+            document.getElementById('chatSidebar').classList.remove('active');
+        }
+
+        function addChatMessage(text, explanation, isUser) {
+            const chatMessages = document.getElementById('chatMessages');
+            const placeholder = chatMessages.querySelector('div[style*="text-align"]');
+            if (placeholder) placeholder.remove();
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `chat-message ${isUser ? 'user' : 'ai'}`;
+            messageDiv.innerHTML = isUser ? `"${text}"` : explanation;
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        async function explainSelectedText() {
+            if (!selectedText) return;
+            
+            document.getElementById('selectionPopup').style.display = 'none';
+            const chatSidebar = document.getElementById('chatSidebar');
+            chatSidebar.classList.add('active');
+            
+            addChatMessage(selectedText, '', true);
+            
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = 'chat-message ai';
+            loadingDiv.innerHTML = '<div class="loading">AI düşünüyor...</div>';
+            loadingDiv.id = 'loadingMessage';
+            document.getElementById('chatMessages').appendChild(loadingDiv);
+            
+            try {
+                const response = await fetch('/explain', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({text: selectedText, article: currentArticle})
+                });
+                const result = await response.json();
+                
+                document.getElementById('loadingMessage').remove();
+                if (result.success) {
+                    addChatMessage('', result.explanation, false);
+                }
+            } catch (error) {
+                document.getElementById('loadingMessage').remove();
+                addChatMessage('', `❌ Hata: ${error.message}`, false);
+            }
+            
+            window.getSelection().removeAllRanges();
+            selectedText = '';
+        }
+
+        async function analyzeLevel() {
+            await callAI('/analyze-level', {article: currentArticle}, '📊 Analiz ediliyor...');
+        }
+
+        async function practice(type) {
+            const titles = {
+                'vocabulary': '📚 Kelime pratiği hazırlanıyor...',
+                'grammar': '✍️ Gramer alıştırmaları...',
+                'comprehension': '🤔 Anlama soruları...',
+                'quiz': '🎮 Quiz hazırlanıyor...'
+            };
+            await callAI('/practice', {article: currentArticle, type: type}, titles[type]);
+        }
+
+        async function callAI(endpoint, data, loadingMessage) {
+            const resultBox = document.getElementById('resultBox');
+            resultBox.innerHTML = `<div class="loading">${loadingMessage}</div>`;
+
+            try {
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+                
+                console.log('API Response:', result);
+                console.log('Result data:', result.data);
+                console.log('Result exercises:', result.data ? result.data.exercises : 'no data');
+
+                if (result.success) {
+                    if (result.data && result.data.exercises) {
+                        console.log('Rendering interactive exercises');
+                        renderInteractiveExercises(result.data.exercises, result.type || data.type);
+                    } else if (result.analysis) {
+                        console.log('Showing analysis');
+                        resultBox.innerHTML = `<div class="result-box">${result.analysis}</div>`;
+                    } else if (result.exercises) {
+                        console.log('Showing exercises as text');
+                        resultBox.innerHTML = `<div class="result-box">${result.exercises}</div>`;
+                    } else {
+                        console.log('Unknown format');
+                        resultBox.innerHTML = `<div class="error">❌ Yanıt formatı tanınmadı</div>`;
+                    }
+                } else {
+                    resultBox.innerHTML = `<div class="error">❌ ${result.error || 'Bilinmeyen hata'}</div>`;
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                resultBox.innerHTML = `<div class="error">❌ ${error.message}</div>`;
+            }
+        }
+
+        function renderInteractiveExercises(exercises, type) {
+            const resultBox = document.getElementById('resultBox');
+            totalScore = 0;
+            
+            console.log('Rendering exercises:', exercises);
+            console.log('Type:', type);
+            
+            if (!exercises || exercises.length === 0) {
+                resultBox.innerHTML = '<div class="error">❌ Alıştırma bulunamadı</div>';
+                return;
+            }
+            
+            let html = `
+                <div class="exercise-container">
+                    <div class="exercise-header">
+                        <h3>📚 ${(type || 'practice').toUpperCase()}</h3>
+                        <div class="score-display">
+                            <span>Puan: <strong id="currentScore">0</strong>/${exercises.length * 10}</span>
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="progressFill"></div>
+                            </div>
+                        </div>
+                    </div>
+            `;
+
+            exercises.forEach((ex, i) => {
+                const questionText = ex.question || ex.statement || ex.sentence || ex.instruction || 'Soru';
+                const exerciseType = ex.type || 'unknown';
+                
+                html += `
+                    <div class="exercise-item">
+                        <div class="question-header">
+                            <span class="question-number">Soru ${i + 1}</span>
+                            <span class="exercise-type">${exerciseType}</span>
+                        </div>
+                        <p class="question-text">${questionText}</p>
+                `;
+                
+                // Render based on exercise type
+                if (exerciseType === 'fill_blank' && ex.options) {
+                    // Fill in the blank with dropdown
+                    html += `
+                        <div class="options">
+                            <select name="q${i}" onchange="checkAnswer('q${i}', this.value, ${ex.correct || 0}, ${JSON.stringify(ex.explanation || 'Açıklama yok')})" style="padding: 12px; font-size: 16px; border-radius: 8px; border: 2px solid #ddd; width: 100%; max-width: 300px;">
+                                <option value="">-- Seçin --</option>
+                                ${(ex.options || []).map((opt, j) => `
+                                    <option value="${j}">${opt}</option>
+                                `).join('')}
+                            </select>
+                        </div>
+                    `;
+                } else {
+                    // Multiple choice / True-False with radio buttons
+                    html += `
+                        <div class="options">
+                            ${(ex.options || []).map((opt, j) => `
+                                <label class="option-label">
+                                    <input type="radio" name="q${i}" value="${j}" 
+                                           onchange="checkAnswer('q${i}', ${j}, ${ex.correct || 0}, ${JSON.stringify(ex.explanation || 'Açıklama yok')})">
+                                    <span>${opt}</span>
+                                </label>
+                            `).join('')}
+                        </div>
+                    `;
+                }
+                
+                html += `
+                        <div class="feedback" id="q${i}_feedback"></div>
+                    </div>
+                `;
+            });
+
+            // Add Finish button
+            html += `
+                <div style="display:flex; gap:10px; margin-top:12px;">
+                    <button id="finishBtn" onclick="finishPractice()">✅ Bitti</button>
+                    <button onclick="saveProfile()" style="background:#00C851;">💾 Kaydet</button>
+                </div>
+            `;
+
+            html += '</div>';
+            resultBox.innerHTML = html;
+
+            // Save current session to evaluate later
+            window.currentExercises = exercises;
+            window.currentPracticeType = type;
+            window.currentAnswers = {}; // qIndex -> selectedIndex
+            // Attach listeners for selects (fill_blank)
+            document.querySelectorAll('select[name^="q"]').forEach(s => {
+                s.addEventListener('change', (e) => {
+                    const name = e.target.name; // q0
+                    window.currentAnswers[name] = e.target.value;
+                });
+            });
+            // Attach listeners for radios
+            document.querySelectorAll('input[type="radio"]').forEach(r => {
+                r.addEventListener('change', (e) => {
+                    const name = e.target.name;
+                    window.currentAnswers[name] = e.target.value;
+                });
+            });
+        }
+
+        function finishPractice() {
+            evaluateAndFinish();
+        }
+
+        function evaluateAndFinish() {
+            const exercises = window.currentExercises || [];
+            const answers = window.currentAnswers || {};
+            let correctCount = 0;
+            const feedbacks = [];
+
+            exercises.forEach((ex, i) => {
+                const qName = `q${i}`;
+                const userVal = answers[qName];
+                const correct = (ex.correct !== undefined) ? String(ex.correct) : null;
+
+                const isCorrect = (userVal !== undefined && correct !== null && String(userVal) === String(correct));
+                if (isCorrect) correctCount++;
+                feedbacks.push({index: i+1, correct: isCorrect, expected: correct, given: userVal});
+            });
+
+            const total = exercises.length;
+            const points = correctCount * 10;
+            // show results
+            const resultBox = document.getElementById('resultBox');
+            resultBox.innerHTML = `<div class="result-box"><h3>Sonuçlar</h3><p>Doğru: ${correctCount} / ${total} — Puan: ${points}</p>` +
+                `<details style="margin-top:10px;"><summary>Her soru için detay</summary><ul>${feedbacks.map(f => `<li>Soru ${f.index}: ${f.correct ? '✅ Doğru' : `❌ Yanlış (cevap: ${f.expected}, verdiniz: ${f.given || '—'})`}`)}</ul></details></div>`;
+
+            // Update profile stats
+            const profile = loadProfile();
+            profile.sessions = profile.sessions || [];
+            profile.sessions.push({type: window.currentPracticeType, total, correct: correctCount, points, date: new Date().toISOString()});
+            saveProfile(profile);
+            renderProfile();
+        }
+
+        function saveProfile(profile) {
+            if (!profile) profile = window._profile || {sessions: []};
+            localStorage.setItem('elp_profile_v1', JSON.stringify(profile));
+            window._profile = profile;
+            showMessage('Profil kaydedildi', 'success');
+        }
+
+        function loadProfile() {
+            try {
+                const raw = localStorage.getItem('elp_profile_v1');
+                if (!raw) return {sessions: []};
+                const p = JSON.parse(raw);
+                window._profile = p;
+                return p;
+            } catch (e) {
+                return {sessions: []};
+            }
+        }
+
+        function renderProfile() {
+            const container = document.getElementById('profileCard');
+            const statsDiv = document.getElementById('profileStats');
+            const profile = loadProfile();
+            if (!profile || !profile.sessions || profile.sessions.length === 0) {
+                container.style.display = 'none';
+                return;
+            }
+            container.style.display = 'block';
+            const totalSessions = profile.sessions.length;
+            const totalPoints = profile.sessions.reduce((s, x) => s + (x.points || 0), 0);
+            const avgAccuracy = Math.round((profile.sessions.reduce((s,x)=> s + (x.correct||0),0) / (profile.sessions.reduce((s,x)=> s + (x.total||0),0) || 1)) * 100);
+
+            statsDiv.innerHTML = `<div>Oturum sayısı: <strong>${totalSessions}</strong></div>
+                                  <div>Toplam puan: <strong>${totalPoints}</strong></div>
+                                  <div>Ortalama başarı: <strong>${avgAccuracy}%</strong></div>`;
+            // render progress chart and wordbook
+            statsDiv.innerHTML += renderProgressChart();
+            // ensure wordbook UI is refreshed (renderWordbook appends)
+            // clear previous wordbook area if any
+            const existingWB = document.getElementById('wbList');
+            if (existingWB) existingWB.parentElement.remove();
+            renderWordbook();
+        }
+
+        async function fetchVocabByLevel() {
+            const level = document.getElementById('cefrSelect').value;
+            const modal = document.getElementById('vocabModal');
+            const list = document.getElementById('vocabList');
+            document.getElementById('vocabLevel').textContent = level;
+            list.innerHTML = `<div class="loading">Kelime listesi alınıyor...</div>`;
+            modal.style.display = 'flex';
+
+            try {
+                const response = await fetch('/vocab-by-level', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({article: currentArticle, level})
+                });
+                const res = await response.json();
+                if (res.success && res.data && res.data.words) {
+                    renderVocabList(res.data.words);
+                } else if (res.success && res.data && res.data.words === undefined) {
+                    list.innerHTML = `<div class="error">AI returned no words. Raw response included.</div><pre style="white-space:pre-wrap;">${res.raw || ''}</pre>`;
+                } else {
+                    list.innerHTML = `<div class="error">Hata: ${res.error || 'Bilinmeyen'}</div>`;
+                }
+            } catch (e) {
+                list.innerHTML = `<div class="error">❌ ${e.message}</div>`;
+            }
+        }
+
+        function renderVocabList(words) {
+            const list = document.getElementById('vocabList');
+            if (!words || words.length === 0) {
+                list.innerHTML = '<div class="error">Kelimeler bulunamadı</div>';
+                return;
+            }
+            list.innerHTML = words.map(w => `
+                <div style="padding:12px; border-radius:8px; background:var(--panel); margin-bottom:10px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                        <div style="font-weight:700; font-size:18px; color:#e6eef6">${w.word} <span style="font-weight:400; font-size:13px; color:var(--muted)">(${w.part_of_speech || ''})</span></div>
+                        <div style="display:flex; gap:8px;">
+                            <button onclick="playTTS('${w.word.replace(/'/g, "\\'")}')">🔊</button>
+                            <button onclick="addToWordbook(${encodeURIComponent(JSON.stringify(w))})">➕</button>
+                        </div>
+                    </div>
+                    <div style="color:#cbd5e1; margin-top:6px;">TR: <strong>${w.short_turkish}</strong></div>
+                    <div style="color:#a0aec0; margin-top:8px; font-style:italic;">Example: ${w.example}</div>
+                </div>
+            `).join('');
+        }
+
+        function playTTS(text) {
+            try {
+                const utter = new SpeechSynthesisUtterance(text);
+                utter.lang = 'en-US';
+                window.speechSynthesis.cancel();
+                window.speechSynthesis.speak(utter);
+            } catch (e) {
+                console.error('TTS error', e);
+            }
+        }
+
+        function addToWordbook(encoded) {
+            try {
+                // decode object
+                const json = decodeURIComponent(encoded);
+                const wordObj = JSON.parse(json);
+                const wb = loadWordbook();
+                wb.words = wb.words || [];
+                wb.words.push(Object.assign({added: new Date().toISOString()}, wordObj));
+                localStorage.setItem('elp_wordbook_v1', JSON.stringify(wb));
+                showMessage('Kelime defterine eklendi', 'success');
+                renderWordbook();
+            } catch (e) {
+                console.error('addToWordbook error', e);
+                showMessage('Kelime eklenemedi', 'error');
+            }
+        }
+
+        function loadWordbook() {
+            try {
+                const raw = localStorage.getItem('elp_wordbook_v1');
+                if (!raw) return {words: []};
+                return JSON.parse(raw);
+            } catch (e) { return {words: []}; }
+        }
+
+        function renderWordbook() {
+            const wb = loadWordbook();
+            const profile = loadProfile();
+            // add UI area inside profileCard
+            const statsDiv = document.getElementById('profileStats');
+            const exportHtml = `
+                <div style="margin-top:12px;">
+                    <h4>📒 Kelime Defteri (${wb.words.length})</h4>
+                    <div style="display:flex; gap:8px; margin-top:8px;">
+                        <button onclick="exportWordbook('csv')">CSV Dışa Aktar</button>
+                        <button onclick="exportWordbook('json')">JSON Dışa Aktar</button>
+                    </div>
+                    <div id="wbList" style="margin-top:10px; max-height:180px; overflow:auto;">${wb.words.map(w => `<div style="padding:8px; border-radius:8px; background:var(--panel); margin-bottom:6px; color:#e6eef6;"><strong>${w.word}</strong> — ${w.short_turkish} <div style="font-style:italic; color:#9aa4b2">${w.example || ''}</div></div>`).join('')}</div>
+                </div>
+            `;
+            statsDiv.innerHTML = statsDiv.innerHTML + exportHtml;
+        }
+
+        function exportWordbook(format) {
+            const wb = loadWordbook();
+            if (!wb.words || wb.words.length === 0) { showMessage('Kelime defteri boş', 'error'); return; }
+            if (format === 'json') {
+                const blob = new Blob([JSON.stringify(wb, null, 2)], {type: 'application/json'});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = 'wordbook.json'; a.click();
+                URL.revokeObjectURL(url);
+            } else {
+                // CSV
+                const rows = [['word','part_of_speech','short_turkish','example','added']];
+                wb.words.forEach(w => rows.push([w.word || '', w.part_of_speech || '', (w.short_turkish||'').replace(/\n/g,' '), (w.example||'').replace(/\n/g,' '), w.added||'']));
+                const csv = rows.map(r => r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+                const blob = new Blob([csv], {type: 'text/csv'});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = 'wordbook.csv'; a.click(); URL.revokeObjectURL(url);
+            }
+        }
+
+        // Render profile chart (simple ASCII-style sparkline)
+        function renderProgressChart() {
+            const profile = loadProfile();
+            const canvas = document.createElement('div');
+            canvas.style.marginTop = '12px';
+            if (!profile.sessions || profile.sessions.length === 0) return '';
+            const last = profile.sessions.slice(-10);
+            const points = last.map(s => s.points || 0);
+            const max = Math.max(...points, 10);
+            return `<div style="margin-top:12px;">İlerleme (son ${points.length} oturum):<div style="display:flex; gap:6px; margin-top:8px;">${points.map(p=>`<div title="${p} puan" style="width:12px; height:${Math.round((p/max)*60)+4}px; background:linear-gradient(180deg,var(--accent1),var(--accent2)); border-radius:4px;"></div>`).join('')}</div></div>`;
+        }
+
+        function closeVocabModal() {
+            document.getElementById('vocabModal').style.display = 'none';
+        }
+
+        function checkAnswer(questionId, selected, correct, explanation) {
+            const feedback = document.getElementById(`${questionId}_feedback`);
+            const isCorrect = selected === correct;
+            
+            // Parse explanation if it's a JSON string
+            let explanationText = explanation;
+            if (typeof explanation === 'string') {
+                try {
+                    explanationText = JSON.parse(explanation);
+                } catch (e) {
+                    explanationText = explanation;
+                }
+            }
+            
+            if (isCorrect) {
+                feedback.innerHTML = `<div class="correct">✅ Doğru! ${explanationText}</div>`;
+                updateScore(10);
+            } else {
+                feedback.innerHTML = `<div class="incorrect">❌ Yanlış. ${explanationText}</div>`;
+            }
+            
+            document.querySelectorAll(`input[name="${questionId}"]`).forEach(i => i.disabled = true);
+        }
+
+        function updateScore(points) {
+            totalScore += points;
+            const scoreEl = document.getElementById('currentScore');
+            if (scoreEl) scoreEl.textContent = totalScore;
+            
+            const progress = document.getElementById('progressFill');
+            if (progress) {
+                const total = document.querySelectorAll('.exercise-item').length * 10;
+                progress.style.width = ((totalScore / total) * 100) + '%';
+            }
+        }
+
+        function showMessage(message, type) {
+            const messageDiv = document.getElementById('message');
+            messageDiv.innerHTML = `<div class="${type}">${message}</div>`;
+            setTimeout(() => messageDiv.innerHTML = '', 5000);
+        }
+    </script>
+</body>
+</html>
