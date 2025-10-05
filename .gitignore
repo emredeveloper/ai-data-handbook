@@ -99,3 +99,10 @@ sentence-transformers/
 # Model çıktıları
 trainer_output/
 outputs/
+
+# Contrastive Learning yapay çıktılar ve veri
+Contrastive Learning/data/
+mnist_embeddings.png
+
+# Jupyter geçici klasörleri
+.ipynb_checkpoints/
