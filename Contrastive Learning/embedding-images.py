@@ -264,8 +264,110 @@ def evaluate_embeddings(embedding_net, device, num_pairs=10000):
         'neg_mean_distance': neg_mean,
     }
 
+# --- 7. Görsel Benzerlik Analizi ---
+def compare_image_similarity(embedding_net, device, num_examples=5):
+    mnist_test = MNIST(root='./data', train=False, download=True, transform=ToTensor())
+    data = mnist_test.data
+    targets = mnist_test.targets
+    
+    labels_set = set(targets.numpy())
+    label_to_indices = {label: np.where(targets.numpy() == label)[0] for label in labels_set}
+    
+    embedding_net.eval()
+    
+    fig, axes = plt.subplots(num_examples, 4, figsize=(15, 3*num_examples))
+    if num_examples == 1:
+        axes = axes.reshape(1, -1)
+    
+    with torch.no_grad():
+        for i in range(num_examples):
+            # Aynı sınıftan iki görsel
+            label1 = random.choice(list(labels_set))
+            idx1, idx2 = np.random.choice(label_to_indices[label1], size=2, replace=False)
+            
+            # Görsel boyutlarını kontrol et ve düzelt
+            img1 = data[idx1].unsqueeze(0).float() / 255.0
+            img2 = data[idx2].unsqueeze(0).float() / 255.0
+            
+            # Debug: boyutları yazdır
+            print(f"Orijinal img1 boyutu: {img1.shape}, img2 boyutu: {img2.shape}")
+            
+            # 28x28 boyutuna resize et (MNIST standart boyutu)
+            if img1.shape[1:] != (1, 28, 28):
+                img1 = F.interpolate(img1.unsqueeze(0), size=(28, 28), mode='bilinear', align_corners=False).squeeze(0)
+            if img2.shape[1:] != (1, 28, 28):
+                img2 = F.interpolate(img2.unsqueeze(0), size=(28, 28), mode='bilinear', align_corners=False).squeeze(0)
+            
+            print(f"Resize sonrası img1 boyutu: {img1.shape}, img2 boyutu: {img2.shape}")
+            
+            # Batch boyutunu kontrol et
+            if len(img1.shape) == 3:
+                img1 = img1.unsqueeze(0)  # batch dimension ekle
+            if len(img2.shape) == 3:
+                img2 = img2.unsqueeze(0)  # batch dimension ekle
+                
+            print(f"Final img1 boyutu: {img1.shape}, img2 boyutu: {img2.shape}")
+            
+            # Embedding'leri hesapla
+            emb1 = embedding_net(img1.to(device))
+            emb2 = embedding_net(img2.to(device))
+            
+            # Mesafeyi hesapla
+            distance = F.pairwise_distance(emb1, emb2, keepdim=False).item()
+            
+            # Görselleştir
+            axes[i, 0].imshow(img1.squeeze().numpy(), cmap='gray')
+            axes[i, 0].set_title(f'Görsel 1 (Sınıf: {label1})')
+            axes[i, 0].axis('off')
+            
+            axes[i, 1].imshow(img2.squeeze().numpy(), cmap='gray')
+            axes[i, 1].set_title(f'Görsel 2 (Sınıf: {label1})')
+            axes[i, 1].axis('off')
+            
+            # Embedding'leri 2D'de göster
+            emb1_np = emb1.cpu().numpy().flatten()
+            emb2_np = emb2.cpu().numpy().flatten()
+            
+            axes[i, 2].scatter(emb1_np[0], emb1_np[1], c='red', s=100, label='Görsel 1')
+            axes[i, 2].scatter(emb2_np[0], emb2_np[1], c='blue', s=100, label='Görsel 2')
+            axes[i, 2].plot([emb1_np[0], emb2_np[0]], [emb1_np[1], emb2_np[1]], 'k--', alpha=0.5)
+            axes[i, 2].set_title(f'Embedding Uzayı\nMesafe: {distance:.4f}')
+            axes[i, 2].legend()
+            axes[i, 2].grid(True, alpha=0.3)
+            
+            # Farklı sınıftan bir görsel
+            label2 = random.choice(list(labels_set - {label1}))
+            idx3 = random.choice(label_to_indices[label2])
+            img3 = data[idx3].unsqueeze(0).float() / 255.0
+            
+            # 28x28 boyutuna resize et
+            if img3.shape[1:] != (1, 28, 28):
+                img3 = F.interpolate(img3.unsqueeze(0), size=(28, 28), mode='bilinear', align_corners=False).squeeze(0)
+            
+            # Batch boyutunu kontrol et
+            if len(img3.shape) == 3:
+                img3 = img3.unsqueeze(0)  # batch dimension ekle
+                
+            print(f"img3 final boyutu: {img3.shape}")
+            
+            emb3 = embedding_net(img3.to(device))
+            distance_diff = F.pairwise_distance(emb1, emb3, keepdim=False).item()
+            
+            axes[i, 3].imshow(img3.squeeze().numpy(), cmap='gray')
+            axes[i, 3].set_title(f'Farklı Sınıf (Sınıf: {label2})\nMesafe: {distance_diff:.4f}')
+            axes[i, 3].axis('off')
+    
+    plt.tight_layout()
+    plt.savefig('image_similarity_comparison.png', dpi=200, bbox_inches='tight')
+    plt.show()
+    
+    print(f"\n=== Görsel Benzerlik Analizi ===")
+    print(f"Toplam {num_examples} örnek gösterildi")
+    print(f"Görselleştirme: image_similarity_comparison.png")
+
 # --- Run everything ---
 if __name__ == '__main__':
     trained_embedding_net = train()
     evaluate_embeddings(trained_embedding_net, torch.device("cuda" if torch.cuda.is_available() else "cpu"), num_pairs=5000)
+    compare_image_similarity(trained_embedding_net, torch.device("cuda" if torch.cuda.is_available() else "cpu"), num_examples=5)
     visualize_embeddings(trained_embedding_net, torch.device("cuda" if torch.cuda.is_available() else "cpu"))

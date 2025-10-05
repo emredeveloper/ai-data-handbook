@@ -103,6 +103,7 @@ outputs/
 # Contrastive Learning yapay çıktılar ve veri
 Contrastive Learning/data/
 mnist_embeddings.png
+image_similarity_comparison.png
 
 # Jupyter geçici klasörleri
 .ipynb_checkpoints/
